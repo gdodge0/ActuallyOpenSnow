@@ -85,3 +85,13 @@ export type WeatherCondition =
   | 'sunny'
   | 'cold'
 
+// Custom location saved by user
+export interface CustomLocation {
+  id: string
+  name: string
+  lat: number
+  lon: number
+  elevation_m?: number
+  createdAt: number
+}
+

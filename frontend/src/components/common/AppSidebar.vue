@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useResortsStore } from '@/stores/resorts'
+import { useCustomLocationsStore } from '@/stores/customLocations'
 
 const resortsStore = useResortsStore()
+const customLocationsStore = useCustomLocationsStore()
 const expandedStates = ref<Set<string>>(new Set())
 
 // Group resorts by state
@@ -41,6 +43,36 @@ function toggleState(state: string) {
             class="block px-3 py-2 rounded-lg text-mountain-200 hover:bg-mountain-800 hover:text-white transition-colors"
           >
             {{ resort.name }}
+          </RouterLink>
+        </nav>
+      </div>
+      
+      <!-- Custom Locations section -->
+      <div class="mb-6">
+        <h3 class="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-mountain-400 uppercase tracking-wider">
+          <svg class="w-4 h-4 text-snow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Custom Locations
+        </h3>
+        <nav class="space-y-1">
+          <RouterLink
+            v-for="location in customLocationsStore.sortedLocations"
+            :key="location.id"
+            :to="`/custom/${location.id}`"
+            class="block px-3 py-2 rounded-lg text-mountain-200 hover:bg-mountain-800 hover:text-white transition-colors"
+          >
+            {{ location.name }}
+          </RouterLink>
+          <RouterLink
+            to="/custom"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg text-mountain-400 hover:bg-mountain-800 hover:text-snow-400 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span class="text-sm">Add Location</span>
           </RouterLink>
         </nav>
       </div>

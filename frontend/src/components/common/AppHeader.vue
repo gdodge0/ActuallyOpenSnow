@@ -70,6 +70,13 @@ function toggleUnits() {
             Favorites
           </RouterLink>
           <RouterLink 
+            to="/custom" 
+            class="text-mountain-300 hover:text-white transition-colors font-medium"
+            active-class="text-white"
+          >
+            Custom
+          </RouterLink>
+          <RouterLink 
             to="/compare" 
             class="text-mountain-300 hover:text-white transition-colors font-medium"
             active-class="text-white"
@@ -154,6 +161,7 @@ function toggleUnits() {
         <nav class="flex flex-col gap-2">
           <RouterLink to="/" class="px-4 py-2 rounded-lg hover:bg-mountain-800 text-mountain-200" @click="mobileMenuOpen = false">Home</RouterLink>
           <RouterLink to="/favorites" class="px-4 py-2 rounded-lg hover:bg-mountain-800 text-mountain-200" @click="mobileMenuOpen = false">Favorites</RouterLink>
+          <RouterLink to="/custom" class="px-4 py-2 rounded-lg hover:bg-mountain-800 text-mountain-200" @click="mobileMenuOpen = false">Custom Locations</RouterLink>
           <RouterLink to="/compare" class="px-4 py-2 rounded-lg hover:bg-mountain-800 text-mountain-200" @click="mobileMenuOpen = false">Compare</RouterLink>
         </nav>
       </div>

@@ -25,6 +25,16 @@ const router = createRouter({
       component: () => import('@/pages/FavoritesPage.vue'),
     },
     {
+      path: '/custom',
+      name: 'custom-locations',
+      component: () => import('@/pages/CustomLocationsPage.vue'),
+    },
+    {
+      path: '/custom/:id',
+      name: 'custom-location',
+      component: () => import('@/pages/CustomLocationPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/pages/SettingsPage.vue'),
