@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Bar } from 'vue-chartjs'
+import { Chart } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  BarController,
   LineElement,
+  LineController,
   PointElement,
   Title,
   Tooltip,
@@ -21,7 +23,9 @@ ChartJS.register(
   CategoryScale,
   LinearScale,
   BarElement,
+  BarController,
   LineElement,
+  LineController,
   PointElement,
   Title,
   Tooltip,
@@ -184,7 +188,7 @@ const chartOptions = computed(() => ({
       Snowfall Forecast ({{ hours }}h)
     </h3>
     <div class="h-64">
-      <Bar ref="chartRef" :data="chartData" :options="chartOptions" />
+      <Chart ref="chartRef" type="bar" :data="chartData" :options="chartOptions" />
     </div>
   </div>
 </template>
