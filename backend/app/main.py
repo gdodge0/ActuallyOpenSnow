@@ -90,9 +90,13 @@ BLEND_CACHE_TTL = 1800  # 30 minutes
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the MeteoClient on startup."""
-    global client, executor
+    global client, executor, blend_cache
     client = MeteoClient(cache_expire_after=1800)  # 30 min cache
     executor = ThreadPoolExecutor(max_workers=10)  # Parallel API calls
+    # Clear blend cache on startup (ensures fresh data after weight changes)
+    blend_cache.clear()
+    print(f"[Startup] Blend weights: {BLEND_MODEL_WEIGHTS}")
+    print(f"[Startup] Total weight: {sum(BLEND_MODEL_WEIGHTS.values())}")
     yield
     # Cleanup
     if client:
@@ -120,8 +124,9 @@ app.add_middleware(
 
 def get_blend_cache_key(lat: float, lon: float, elevation: float | None) -> str:
     """Generate a cache key for blend forecasts."""
-    # Round coordinates to reduce cache fragmentation
-    key_data = f"{lat:.4f}:{lon:.4f}:{elevation}"
+    # Include weights in cache key so weight changes invalidate cache
+    weights_str = ",".join(f"{k}:{v}" for k, v in sorted(BLEND_MODEL_WEIGHTS.items()))
+    key_data = f"{lat:.4f}:{lon:.4f}:{elevation}:{weights_str}"
     return hashlib.md5(key_data.encode()).hexdigest()
 
 
@@ -337,14 +342,19 @@ async def health_check():
 
 def get_blend_description() -> str:
     """Generate blend model description from current weights."""
-    weighted_2x = [m.upper() for m, w in BLEND_MODEL_WEIGHTS.items() if w >= 2.0]
-    weighted_1x = [m.upper() for m, w in BLEND_MODEL_WEIGHTS.items() if w < 2.0]
+    # Group models by weight
+    weight_groups: dict[float, list[str]] = {}
+    for model_id, weight in BLEND_MODEL_WEIGHTS.items():
+        if weight not in weight_groups:
+            weight_groups[weight] = []
+        weight_groups[weight].append(model_id.upper())
     
+    # Sort by weight descending
     parts = []
-    if weighted_2x:
-        parts.append(f"{', '.join(weighted_2x)} (2x weight)")
-    if weighted_1x:
-        parts.append(f"{', '.join(weighted_1x)} (1x weight)")
+    for weight in sorted(weight_groups.keys(), reverse=True):
+        models = ", ".join(sorted(weight_groups[weight]))
+        weight_str = f"{weight:g}x" if weight != int(weight) else f"{int(weight)}x"
+        parts.append(f"{models} ({weight_str})")
     
     return f"Weighted multi-model blend: {'; '.join(parts)}"
 
@@ -691,6 +701,69 @@ async def get_blend_config():
         "description": get_blend_description(),
         "total_weight": sum(BLEND_MODEL_WEIGHTS.values()),
         "config_method": "environment_variables",
+    }
+
+
+@app.get("/api/blend/debug")
+async def debug_blend(
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude"),
+    elevation: Optional[float] = Query(None, description="Elevation in meters"),
+):
+    """Debug endpoint to see individual model totals and blend calculation."""
+    if client is None:
+        raise HTTPException(status_code=503, detail="Weather client not initialized")
+    if executor is None:
+        raise HTTPException(status_code=503, detail="Thread pool not initialized")
+    
+    # Fetch all models in parallel
+    loop = asyncio.get_event_loop()
+    tasks = [
+        loop.run_in_executor(executor, fetch_single_model, model_id, lat, lon, elevation)
+        for model_id in BLEND_MODELS
+    ]
+    results = await asyncio.gather(*tasks)
+    
+    # Calculate totals for each model
+    model_totals = {}
+    model_errors = {}
+    
+    for model_id, forecast, error in results:
+        if forecast is not None:
+            data = forecast.to_dict()
+            snowfall = data["hourly_data"].get("snowfall", [])
+            total_cm = sum(v for v in snowfall if v is not None)
+            total_inches = total_cm / 2.54
+            model_totals[model_id] = {
+                "total_cm": round(total_cm, 2),
+                "total_inches": round(total_inches, 2),
+                "hours": len(snowfall),
+                "weight": BLEND_MODEL_WEIGHTS.get(model_id, 1.0),
+            }
+        else:
+            model_errors[model_id] = error
+    
+    # Calculate expected blend total
+    weighted_sum_cm = sum(
+        info["total_cm"] * info["weight"] 
+        for info in model_totals.values()
+    )
+    total_weight = sum(info["weight"] for info in model_totals.values())
+    
+    blend_total_cm = weighted_sum_cm / total_weight if total_weight > 0 else 0
+    blend_total_inches = blend_total_cm / 2.54
+    
+    return {
+        "location": {"lat": lat, "lon": lon, "elevation": elevation},
+        "weights_config": BLEND_MODEL_WEIGHTS,
+        "models": model_totals,
+        "errors": model_errors,
+        "blend_calculation": {
+            "weighted_sum_cm": round(weighted_sum_cm, 2),
+            "total_weight": total_weight,
+            "blend_total_cm": round(blend_total_cm, 2),
+            "blend_total_inches": round(blend_total_inches, 2),
+        },
     }
 
 
