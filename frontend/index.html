@@ -2,17 +2,84 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/snowflake.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Mountain weather forecasts for skiers and snowboarders" />
-    <title>ActuallyOpenSnow - Mountain Weather</title>
+    
+    <!-- Primary Meta Tags -->
+    <title>ActuallyOpenSnow - Free Mountain Snow Forecasts</title>
+    <meta name="title" content="ActuallyOpenSnow - Free Mountain Snow Forecasts" />
+    <meta name="description" content="Free, accurate snow forecasts for ski resorts across North America. Compare multiple weather models including GFS, ECMWF, and AI-enhanced forecasts. Find the best powder days at your favorite mountains." />
+    <meta name="keywords" content="snow forecast, ski resort weather, powder alert, mountain weather, skiing, snowboarding, ski conditions, snow report, GFS, ECMWF, weather models, Alta, Vail, Jackson Hole, Mammoth, Big Sky, Whistler" />
+    <meta name="author" content="ActuallyOpenSnow" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="English" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/snowflake.svg" />
+    <link rel="apple-touch-icon" href="/snowflake.svg" />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="msapplication-TileColor" content="#0f172a" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ActuallyOpenSnow" />
+    <meta property="og:title" content="ActuallyOpenSnow - Free Mountain Snow Forecasts" />
+    <meta property="og:description" content="Free, accurate snow forecasts for ski resorts across North America. Compare multiple weather models and find the best powder days." />
+    <meta property="og:image" content="/snowflake.svg" />
+    <meta property="og:locale" content="en_US" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="ActuallyOpenSnow - Free Mountain Snow Forecasts" />
+    <meta name="twitter:description" content="Free, accurate snow forecasts for ski resorts across North America. Compare multiple weather models and find the best powder days." />
+    <meta name="twitter:image" content="/snowflake.svg" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://actuallyopensnow.com" />
+    
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "ActuallyOpenSnow",
+      "description": "Free, accurate snow forecasts for ski resorts across North America. Compare multiple weather models including GFS, ECMWF, and AI-enhanced forecasts.",
+      "url": "https://actuallyopensnow.com",
+      "applicationCategory": "WeatherApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Multi-model snow forecasts",
+        "70+ North American ski resorts",
+        "7-day forecast horizon",
+        "Powder alerts",
+        "Custom location support",
+        "Unit conversion (imperial/metric)"
+      ],
+      "creator": {
+        "@type": "Organization",
+        "name": "ActuallyOpenSnow"
+      }
+    }
+    </script>
     
     <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-mountain-950 text-mountain-100">
+    <noscript>
+      <div style="padding: 2rem; text-align: center; background: #1e293b; color: #e2e8f0;">
+        <h1>ActuallyOpenSnow</h1>
+        <p>This application requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
+      </div>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

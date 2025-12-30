@@ -24,6 +24,13 @@ const settingsStore = useSettingsStore()
 const locationId = computed(() => route.params.id as string)
 const location = computed(() => customLocationsStore.getLocationById(locationId.value))
 
+// Update page title when location loads
+watch(location, (loc) => {
+  if (loc) {
+    document.title = `${loc.name} Forecast | ActuallyOpenSnow`
+  }
+}, { immediate: true })
+
 // Local forecast state (not using store cache for custom locations)
 const forecast = ref<Forecast | null>(null)
 const loading = ref(false)

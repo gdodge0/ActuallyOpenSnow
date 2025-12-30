@@ -22,6 +22,13 @@ const settingsStore = useSettingsStore()
 const slug = computed(() => route.params.slug as string)
 const resort = computed(() => resortsStore.getResortBySlug(slug.value))
 
+// Update page title when resort loads
+watch(resort, (r) => {
+  if (r) {
+    document.title = `${r.name} Snow Forecast | ActuallyOpenSnow`
+  }
+}, { immediate: true })
+
 // Load forecast when slug or model changes
 async function loadForecast() {
   if (!slug.value) return
