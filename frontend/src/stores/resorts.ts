@@ -10,18 +10,20 @@ import { fetchResorts } from '@/utils/api'
 const FAVORITES_KEY = 'actuallyopensnow-favorites'
 
 function loadFavorites(): string[] {
+  if (typeof localStorage === 'undefined') return []
   try {
     const stored = localStorage.getItem(FAVORITES_KEY)
     if (stored) {
       return JSON.parse(stored)
     }
-  } catch (e) {
-    console.warn('Failed to load favorites:', e)
+  } catch {
+    // Ignore localStorage errors
   }
   return []
 }
 
 function saveFavorites(favorites: string[]) {
+  if (typeof localStorage === 'undefined') return
   localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
 }
 

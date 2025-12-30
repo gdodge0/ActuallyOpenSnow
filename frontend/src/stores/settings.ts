@@ -25,13 +25,16 @@ const defaultSettings: SettingsState = {
 }
 
 function loadSettings(): SettingsState {
+  if (typeof localStorage === 'undefined') {
+    return defaultSettings
+  }
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       return { ...defaultSettings, ...JSON.parse(stored) }
     }
-  } catch (e) {
-    console.warn('Failed to load settings:', e)
+  } catch {
+    // Ignore localStorage errors
   }
   return defaultSettings
 }
@@ -47,6 +50,7 @@ export const useSettingsStore = defineStore('settings', () => {
   
   // Persist settings on change
   function saveSettings() {
+    if (typeof localStorage === 'undefined') return
     const settings: SettingsState = {
       temperatureUnit: temperatureUnit.value,
       precipitationUnit: precipitationUnit.value,
@@ -77,11 +81,15 @@ export const useSettingsStore = defineStore('settings', () => {
   
   function toggleTheme() {
     theme.value = theme.value === 'dark' ? 'light' : 'dark'
-    document.documentElement.classList.toggle('dark', theme.value === 'dark')
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', theme.value === 'dark')
+    }
   }
   
-  // Initialize theme
-  document.documentElement.classList.toggle('dark', theme.value === 'dark')
+  // Initialize theme (only in browser)
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('dark', theme.value === 'dark')
+  }
   
   return {
     temperatureUnit,
