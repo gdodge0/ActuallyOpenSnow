@@ -46,7 +46,7 @@ function getSnowTotal(slug: string): string {
   
   const totalCm = getTotalSnowfall(forecast)
   const converted = convertPrecipitation(totalCm, forecast.hourly_units.snowfall || 'cm', settingsStore.precipitationUnit)
-  return formatSnowfall(converted ?? 0)
+  return formatSnowfall(converted ?? 0, settingsStore.precipitationUnit)
 }
 
 // Check if resort has powder (> 6" expected)

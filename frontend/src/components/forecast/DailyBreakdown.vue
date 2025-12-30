@@ -59,7 +59,7 @@ const rows = computed<DisplayRow[]>(() => {
       emoji: getWeatherEmoji(condition),
       highTemp: formatTemperature(high, settingsStore.temperatureUnit),
       lowTemp: formatTemperature(low, settingsStore.temperatureUnit),
-      snow: formatSnowfall(snow),
+      snow: formatSnowfall(snow, settingsStore.precipitationUnit),
       wind: formatWindSpeed(wind, settingsStore.windSpeedUnit),
       freezingLevel: formatElevation(freezing, settingsStore.elevationUnit),
       isToday: s.dateStr === today,

@@ -27,7 +27,7 @@ watch(selectedResort, async (slug) => {
 function getSnowTotal(forecast: Forecast): string {
   const totalCm = getTotalSnowfall(forecast)
   const converted = convertPrecipitation(totalCm, forecast.hourly_units.snowfall || 'cm', settingsStore.precipitationUnit)
-  return formatSnowfall(converted ?? 0)
+  return formatSnowfall(converted ?? 0, settingsStore.precipitationUnit)
 }
 
 // Daily comparison data
@@ -58,7 +58,7 @@ const dailyComparison = computed(() => {
       if (daySummary) {
         const snowCm = daySummary.snowfall
         const converted = convertPrecipitation(snowCm, forecast.hourly_units.snowfall || 'cm', settingsStore.precipitationUnit)
-        row.models[modelId] = formatSnowfall(converted ?? 0)
+        row.models[modelId] = formatSnowfall(converted ?? 0, settingsStore.precipitationUnit)
       } else {
         row.models[modelId] = '--'
       }

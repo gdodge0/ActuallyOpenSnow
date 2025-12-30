@@ -137,10 +137,13 @@ export function formatTemperature(value: number | null, unit: TemperatureUnit): 
   return `${Math.round(value)}°${unit}`
 }
 
-export function formatSnowfall(inches: number): string {
-  if (inches < 0.1) return 'trace'
-  if (inches < 1) return inches.toFixed(1) + '"'
-  return Math.round(inches) + '"'
+export function formatSnowfall(value: number, unit: PrecipitationUnit = 'in'): string {
+  if (value < 0.1) return 'trace'
+  
+  const unitLabel = unit === 'in' ? '"' : ' cm'
+  
+  // Always round to whole numbers for clean display
+  return Math.round(value) + unitLabel
 }
 
 export function formatPrecipitation(value: number, unit: PrecipitationUnit): string {

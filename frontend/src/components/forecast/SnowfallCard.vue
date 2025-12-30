@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { convertPrecipitation, formatSnowfall } from '@/utils/units'
+import { convertPrecipitation } from '@/utils/units'
 
 const props = defineProps<{
   totalSnowCm: number
@@ -20,11 +20,8 @@ const displayValue = computed(() => {
   if (converted === null) return '--'
   if (converted < 0.1) return 'trace'
   
-  // Show big number without unit for hero display
-  if (settingsStore.precipitationUnit === 'in') {
-    return converted < 10 ? converted.toFixed(1) : Math.round(converted).toString()
-  }
-  return converted < 10 ? converted.toFixed(1) : Math.round(converted).toString()
+  // Always round to whole numbers for clean, consistent display
+  return Math.round(converted).toString()
 })
 
 const unitLabel = computed(() => {
