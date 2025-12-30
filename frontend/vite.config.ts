@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
+// Use localhost for local dev, Docker service name is handled by nginx in production
+const API_TARGET = process.env.VITE_API_URL || 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -11,16 +14,15 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    host: '0.0.0.0', // Allow external connections in dev
+    host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        target: API_TARGET,
         changeOrigin: true,
       }
     }
   },
   build: {
-    // Optimize for production
     target: 'es2022',
     minify: 'esbuild',
     sourcemap: false,
