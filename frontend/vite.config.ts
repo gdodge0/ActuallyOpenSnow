@@ -11,12 +11,26 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: '0.0.0.0', // Allow external connections in dev
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://backend:8000',
         changeOrigin: true,
+      }
+    }
+  },
+  build: {
+    // Optimize for production
+    target: 'es2022',
+    minify: 'esbuild',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['vue', 'vue-router', 'pinia'],
+          'charts': ['chart.js', 'vue-chartjs'],
+        }
       }
     }
   }
 })
-

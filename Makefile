@@ -6,75 +6,73 @@ help:
 	@echo "ActuallyOpenSnow Docker Commands"
 	@echo "================================="
 	@echo ""
-	@echo "  make dev      - Start development environment (hot reload)"
-	@echo "  make prod     - Start production environment"
+	@echo "Production (Coolify-compatible, no port bindings):"
 	@echo "  make build    - Build production images"
 	@echo "  make up       - Start production containers"
 	@echo "  make down     - Stop all containers"
 	@echo "  make logs     - View container logs"
+	@echo ""
+	@echo "Development (local with port bindings):"
+	@echo "  make dev      - Start development environment"
+	@echo "  make dev-down - Stop development containers"
+	@echo ""
+	@echo "Utility:"
 	@echo "  make clean    - Remove containers, images, and volumes"
+	@echo "  make status   - Show container status"
 	@echo ""
 
-# Development
-dev:
-	docker-compose -f docker-compose.dev.yml up --build
-
-dev-d:
-	docker-compose -f docker-compose.dev.yml up --build -d
-
-dev-down:
-	docker-compose -f docker-compose.dev.yml down
-
-# Production
+# Production (Coolify-compatible)
 prod: build up
 
 build:
-	docker-compose build
+	docker-compose -f docker-compose.yaml build
 
 up:
-	docker-compose up -d
+	docker-compose -f docker-compose.yaml up -d
 
 down:
-	docker-compose down
+	docker-compose -f docker-compose.yaml down
 
 logs:
-	docker-compose logs -f
+	docker-compose -f docker-compose.yaml logs -f
 
 logs-backend:
-	docker-compose logs -f backend
+	docker-compose -f docker-compose.yaml logs -f backend
 
 logs-frontend:
-	docker-compose logs -f frontend
+	docker-compose -f docker-compose.yaml logs -f frontend
+
+# Development (with port bindings for local use)
+dev:
+	docker-compose -f docker-compose.dev.yaml up --build
+
+dev-d:
+	docker-compose -f docker-compose.dev.yaml up --build -d
+
+dev-down:
+	docker-compose -f docker-compose.dev.yaml down
 
 # Cleanup
 clean:
-	docker-compose down -v --rmi all --remove-orphans
-	docker-compose -f docker-compose.dev.yml down -v --rmi all --remove-orphans
+	docker-compose -f docker-compose.yaml down -v --rmi all --remove-orphans 2>/dev/null || true
+	docker-compose -f docker-compose.dev.yaml down -v --rmi all --remove-orphans 2>/dev/null || true
 
 # Individual services
 backend:
-	docker-compose up -d backend
+	docker-compose -f docker-compose.yaml up -d backend
 
 frontend:
-	docker-compose up -d frontend
+	docker-compose -f docker-compose.yaml up -d frontend
 
 # Rebuild specific service
 rebuild-backend:
-	docker-compose build backend
-	docker-compose up -d backend
+	docker-compose -f docker-compose.yaml build backend
+	docker-compose -f docker-compose.yaml up -d backend
 
 rebuild-frontend:
-	docker-compose build frontend
-	docker-compose up -d frontend
-
-# Shell access
-shell-backend:
-	docker-compose exec backend /bin/sh
-
-shell-frontend:
-	docker-compose exec frontend /bin/sh
+	docker-compose -f docker-compose.yaml build frontend
+	docker-compose -f docker-compose.yaml up -d frontend
 
 # Status
 status:
-	docker-compose ps
-
+	docker-compose -f docker-compose.yaml ps

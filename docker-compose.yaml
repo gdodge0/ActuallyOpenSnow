@@ -6,14 +6,12 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: actuallyopensnow-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      # Persist weather cache
       - weather-cache:/app/backend/.weather_cache
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
@@ -29,10 +27,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: actuallyopensnow-frontend
     restart: unless-stopped
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
@@ -52,4 +49,3 @@ networks:
 volumes:
   weather-cache:
     driver: local
-

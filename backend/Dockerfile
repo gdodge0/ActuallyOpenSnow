@@ -1,4 +1,6 @@
 # Backend Dockerfile - FastAPI + Python
+# Optimized for Coolify deployment
+
 FROM python:3.12-slim AS base
 
 # Set environment variables
@@ -36,13 +38,12 @@ RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
+# Expose port (Coolify will handle external mapping)
 EXPOSE 8000
 
-# Health check
+# Health check for Coolify
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
 
-# Run the application
+# Run the application - bind to 0.0.0.0 for container networking
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
