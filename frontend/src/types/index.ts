@@ -1,0 +1,87 @@
+/**
+ * TypeScript types matching the Python weather API.
+ */
+
+// Resort type matching backend
+export interface Resort {
+  slug: string
+  name: string
+  state: string
+  country: string
+  lat: number
+  lon: number
+  base_elevation_m: number
+  summit_elevation_m: number
+}
+
+// Model info type
+export interface ModelInfo {
+  model_id: string
+  display_name: string
+  provider: string
+  max_forecast_days: number
+  resolution_degrees: number
+  description: string
+}
+
+// Forecast response matching Python Forecast.to_dict()
+export interface Forecast {
+  lat: number
+  lon: number
+  api_lat: number
+  api_lon: number
+  elevation_m: number | null
+  model_id: string
+  model_run_utc: string | null
+  times_utc: string[]
+  hourly_data: Record<string, (number | null)[]>
+  hourly_units: Record<string, string>
+}
+
+// Multi-model comparison response
+export interface ComparisonResponse {
+  lat: number
+  lon: number
+  elevation_m: number | null
+  forecasts: Record<string, Forecast>
+}
+
+// Unit preferences
+export type TemperatureUnit = 'C' | 'F'
+export type PrecipitationUnit = 'cm' | 'in'
+export type WindSpeedUnit = 'kmh' | 'mph' | 'ms'
+export type ElevationUnit = 'm' | 'ft'
+
+export interface UnitPreferences {
+  temperature: TemperatureUnit
+  precipitation: PrecipitationUnit
+  windSpeed: WindSpeedUnit
+  elevation: ElevationUnit
+}
+
+// Daily summary computed from hourly data
+export interface DailySummary {
+  date: Date
+  dateStr: string
+  dayName: string
+  highTemp: number | null
+  lowTemp: number | null
+  snowfall: number
+  precipitation: number
+  maxWind: number | null
+  maxGusts: number | null
+  avgFreezingLevel: number | null
+  hours: number
+}
+
+// Weather condition for icons
+export type WeatherCondition = 
+  | 'heavy-snow'
+  | 'snow'
+  | 'light-snow'
+  | 'rain'
+  | 'cloudy'
+  | 'partly-cloudy'
+  | 'sunny'
+  | 'cold'
+

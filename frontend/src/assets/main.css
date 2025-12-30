@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply font-body antialiased;
+    @apply bg-mountain-950 text-mountain-100;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply bg-mountain-900/60 backdrop-blur-md;
+    @apply border border-mountain-700/50;
+    @apply rounded-2xl shadow-xl;
+  }
+  
+  /* Primary button */
+  .btn-primary {
+    @apply px-4 py-2 rounded-lg font-medium;
+    @apply bg-snow-500 text-mountain-950;
+    @apply hover:bg-snow-400 transition-colors;
+    @apply focus:outline-none focus:ring-2 focus:ring-snow-500 focus:ring-offset-2 focus:ring-offset-mountain-900;
+  }
+  
+  /* Secondary button */
+  .btn-secondary {
+    @apply px-4 py-2 rounded-lg font-medium;
+    @apply bg-mountain-700 text-mountain-100;
+    @apply hover:bg-mountain-600 transition-colors;
+    @apply focus:outline-none focus:ring-2 focus:ring-mountain-500 focus:ring-offset-2 focus:ring-offset-mountain-900;
+  }
+  
+  /* Big stat number */
+  .stat-number {
+    @apply font-display font-bold text-5xl md:text-6xl lg:text-7xl;
+    @apply bg-gradient-to-br from-snow-300 to-snow-500 bg-clip-text text-transparent;
+  }
+  
+  /* Unit label */
+  .stat-unit {
+    @apply font-mono text-lg md:text-xl text-mountain-400;
+  }
+  
+  /* Snow amount gradient */
+  .snow-gradient {
+    @apply bg-gradient-to-r from-snow-400 via-snow-300 to-white;
+  }
+  
+  /* Model badge */
+  .model-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-mountain-700 text-mountain-200 border border-mountain-600;
+  }
+  
+  /* Powder alert */
+  .powder-alert {
+    @apply relative overflow-hidden;
+    @apply bg-gradient-to-r from-snow-500/20 via-purple-500/20 to-pink-500/20;
+    @apply border border-snow-400/30;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  /* Text gradient */
+  .text-gradient-snow {
+    @apply bg-gradient-to-r from-snow-300 to-snow-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-warm {
+    @apply bg-gradient-to-r from-orange-400 to-rose-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-cold {
+    @apply bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent;
+  }
+  
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.mountain.600') transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.mountain.600');
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.mountain.500');
+  }
+}
+
+/* Snowflake animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(180deg);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+

@@ -1,0 +1,51 @@
+# Development Docker Compose - with hot reload
+version: '3.8'
+
+services:
+  # FastAPI Backend with hot reload
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: actuallyopensnow-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount source code for hot reload
+      - ./backend/app:/app/backend/app:ro
+      - ./weather/src:/app/weather/src:ro
+      - weather-cache-dev:/app/backend/.weather_cache
+    networks:
+      - app-network-dev
+
+  # Vue.js Frontend dev server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: actuallyopensnow-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:8000
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+    depends_on:
+      - backend
+    networks:
+      - app-network-dev
+
+networks:
+  app-network-dev:
+    driver: bridge
+
+volumes:
+  weather-cache-dev:
+    driver: local
+
