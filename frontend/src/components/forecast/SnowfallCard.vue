@@ -56,8 +56,12 @@ const isPowderDay = computed(() => {
         <span class="text-mountain-400 text-sm font-medium">
           {{ period || 'Total Snowfall' }}
         </span>
-        <span v-if="modelId" class="model-badge">
-          {{ modelId.toUpperCase() }}
+        <span v-if="modelId" class="model-badge" :class="{ 'bg-gradient-to-r from-snow-500/20 to-mountain-700': modelId === 'blend' }">
+          <span v-if="modelId === 'blend'" class="inline-flex items-center gap-1">
+            <span class="text-xs">✨</span>
+            BLEND
+          </span>
+          <span v-else>{{ modelId.toUpperCase() }}</span>
         </span>
       </div>
       

@@ -20,7 +20,7 @@ export const useForecastStore = defineStore('forecast', () => {
   const currentForecast = ref<Forecast | null>(null)
   const comparison = ref<ComparisonResponse | null>(null)
   const models = ref<ModelInfo[]>([])
-  const selectedModel = ref<string>('gfs')
+  const selectedModel = ref<string>('blend')  // Default to blend model
   const loading = ref(false)
   const error = ref<string | null>(null)
   
@@ -124,7 +124,7 @@ export const useForecastStore = defineStore('forecast', () => {
     try {
       comparison.value = await fetchResortComparison(
         slug,
-        modelIds ?? ['gfs', 'ifs', 'aifs']
+        modelIds ?? ['blend', 'gfs', 'ifs', 'aifs']
       )
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load comparison'

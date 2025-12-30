@@ -13,6 +13,12 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      # Blend model weights (configurable)
+      - BLEND_WEIGHT_GFS=2.0
+      - BLEND_WEIGHT_IFS=2.0
+      - BLEND_WEIGHT_AIFS=2.0
+      - BLEND_WEIGHT_ICON=1.0
+      - BLEND_WEIGHT_JMA=1.0
     volumes:
       - ./backend/app:/app/backend/app:ro
       - ./weather/src:/app/weather/src:ro

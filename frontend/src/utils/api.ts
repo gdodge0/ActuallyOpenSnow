@@ -7,7 +7,7 @@ import type { Resort, ModelInfo, Forecast, ComparisonResponse } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 60000,  // Increased timeout for blend model
 })
 
 // Request interceptor for logging
@@ -24,6 +24,39 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// In-memory cache for forecasts
+interface CacheEntry {
+  data: Forecast
+  timestamp: number
+}
+const forecastCache = new Map<string, CacheEntry>()
+const CACHE_TTL = 30 * 60 * 1000  // 30 minutes
+
+function getCacheKey(slug: string, model: string): string {
+  return `${slug}:${model}`
+}
+
+function getCachedForecast(key: string): Forecast | null {
+  const entry = forecastCache.get(key)
+  if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
+    return entry.data
+  }
+  if (entry) {
+    forecastCache.delete(key)  // Expired
+  }
+  return null
+}
+
+function setCachedForecast(key: string, data: Forecast): void {
+  forecastCache.set(key, { data, timestamp: Date.now() })
+  
+  // Simple cache eviction
+  if (forecastCache.size > 50) {
+    const oldestKey = forecastCache.keys().next().value
+    if (oldestKey) forecastCache.delete(oldestKey)
+  }
+}
 
 /**
  * Fetch all available ski resorts.
@@ -51,17 +84,80 @@ export async function fetchModels(): Promise<ModelInfo[]> {
 }
 
 /**
- * Fetch forecast for a resort.
+ * Fetch forecast for a resort (with caching).
  */
 export async function fetchResortForecast(
   slug: string,
-  model: string = 'gfs',
+  model: string = 'blend',
   elevation: string = 'summit'
 ): Promise<Forecast> {
+  const cacheKey = getCacheKey(slug, model)
+  
+  // Check cache first
+  const cached = getCachedForecast(cacheKey)
+  if (cached) {
+    console.log(`[API] Cache hit for ${slug}:${model}`)
+    return cached
+  }
+  
   const { data } = await api.get<Forecast>(`/resorts/${slug}/forecast`, {
     params: { model, elevation },
   })
+  
+  // Cache the result
+  setCachedForecast(cacheKey, data)
+  
   return data
+}
+
+/**
+ * Batch fetch forecasts for multiple resorts (single HTTP request).
+ */
+export async function fetchBatchForecasts(
+  slugs: string[],
+  model: string = 'blend',
+  elevation: string = 'summit'
+): Promise<Map<string, Forecast>> {
+  const result = new Map<string, Forecast>()
+  const uncachedSlugs: string[] = []
+  
+  // Check cache first for each slug
+  for (const slug of slugs) {
+    const cacheKey = getCacheKey(slug, model)
+    const cached = getCachedForecast(cacheKey)
+    if (cached) {
+      result.set(slug, cached)
+    } else {
+      uncachedSlugs.push(slug)
+    }
+  }
+  
+  // If all cached, return immediately
+  if (uncachedSlugs.length === 0) {
+    console.log('[API] All forecasts from cache')
+    return result
+  }
+  
+  // Fetch uncached forecasts in batch
+  console.log(`[API] Batch fetching ${uncachedSlugs.length} forecasts`)
+  const { data } = await api.get<{ forecasts: Record<string, Forecast>; errors: Record<string, string> }>(
+    '/resorts/batch/forecast',
+    { params: { slugs: uncachedSlugs.join(','), model, elevation } }
+  )
+  
+  // Cache and add to result
+  for (const [slug, forecast] of Object.entries(data.forecasts)) {
+    const cacheKey = getCacheKey(slug, model)
+    setCachedForecast(cacheKey, forecast)
+    result.set(slug, forecast)
+  }
+  
+  // Log errors
+  for (const [slug, error] of Object.entries(data.errors)) {
+    console.warn(`[API] Failed to fetch ${slug}: ${error}`)
+  }
+  
+  return result
 }
 
 /**
@@ -70,7 +166,7 @@ export async function fetchResortForecast(
 export async function fetchForecast(
   lat: number,
   lon: number,
-  model: string = 'gfs',
+  model: string = 'blend',
   elevation?: number
 ): Promise<Forecast> {
   const params: Record<string, unknown> = { lat, lon, model }
@@ -86,7 +182,7 @@ export async function fetchForecast(
  */
 export async function fetchResortComparison(
   slug: string,
-  models: string[] = ['gfs', 'ifs', 'aifs'],
+  models: string[] = ['blend', 'gfs', 'ifs', 'aifs'],
   elevation: string = 'summit'
 ): Promise<ComparisonResponse> {
   const { data } = await api.get<ComparisonResponse>(`/resorts/${slug}/compare`, {
@@ -101,7 +197,7 @@ export async function fetchResortComparison(
 export async function fetchComparison(
   lat: number,
   lon: number,
-  models: string[] = ['gfs', 'ifs', 'aifs'],
+  models: string[] = ['blend', 'gfs', 'ifs', 'aifs'],
   elevation?: number
 ): Promise<ComparisonResponse> {
   const params: Record<string, unknown> = {

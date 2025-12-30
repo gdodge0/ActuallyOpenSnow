@@ -11,6 +11,15 @@ services:
       - "8000"
     environment:
       - PYTHONUNBUFFERED=1
+      # Blend model weights (higher = more influence)
+      # GFS, IFS, AIFS weighted 2x (primary models)
+      # ICON, JMA weighted 1x (supplementary models)
+      # Set to 0 to exclude a model from the blend
+      - BLEND_WEIGHT_GFS=2.0
+      - BLEND_WEIGHT_IFS=2.0
+      - BLEND_WEIGHT_AIFS=2.0
+      - BLEND_WEIGHT_ICON=1.0
+      - BLEND_WEIGHT_JMA=1.0
     volumes:
       - weather-cache:/app/backend/.weather_cache
     healthcheck:

@@ -14,7 +14,7 @@ const forecastStore = useForecastStore()
 const settingsStore = useSettingsStore()
 
 const selectedResort = ref('')
-const selectedModels = ref<string[]>(['gfs', 'ifs', 'aifs'])
+const selectedModels = ref<string[]>(['blend', 'gfs', 'ifs', 'aifs'])
 
 // Load comparison when resort changes
 watch(selectedResort, async (slug) => {

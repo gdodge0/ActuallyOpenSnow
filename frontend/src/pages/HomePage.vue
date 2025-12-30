@@ -5,7 +5,7 @@ import { useResortsStore } from '@/stores/resorts'
 import { useSettingsStore } from '@/stores/settings'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { Resort, Forecast } from '@/types'
-import { fetchResortForecast } from '@/utils/api'
+import { fetchBatchForecasts } from '@/utils/api'
 import { getTotalSnowfall } from '@/utils/forecast'
 import { convertPrecipitation, formatSnowfall } from '@/utils/units'
 
@@ -17,21 +17,18 @@ const featuredSlugs = ['jackson-hole', 'alta', 'mammoth-mountain', 'vail', 'big-
 const featuredForecasts = ref<Map<string, Forecast>>(new Map())
 const loadingFeatured = ref(true)
 
-// Load featured resort forecasts
+// Load featured resort forecasts using batch endpoint (single HTTP request)
 onMounted(async () => {
   loadingFeatured.value = true
   
-  // Load forecasts in parallel
-  const promises = featuredSlugs.map(async (slug) => {
-    try {
-      const forecast = await fetchResortForecast(slug, 'gfs')
-      featuredForecasts.value.set(slug, forecast)
-    } catch (e) {
-      console.error(`Failed to load forecast for ${slug}:`, e)
-    }
-  })
+  try {
+    // Fetch all blend forecasts in a single batch request
+    const forecasts = await fetchBatchForecasts(featuredSlugs, 'blend')
+    featuredForecasts.value = forecasts
+  } catch (e) {
+    console.error('Failed to load featured forecasts:', e)
+  }
   
-  await Promise.allSettled(promises)
   loadingFeatured.value = false
 })
 
@@ -64,23 +61,32 @@ function hasPowder(slug: string): boolean {
 
 // Get the resort with most snow
 const topSnowResort = computed(() => {
-  let maxSnow = 0
+  let maxSnowCm = 0
   let topSlug = ''
+  let topForecast: Forecast | null = null
   
   for (const [slug, forecast] of featuredForecasts.value) {
     const totalCm = getTotalSnowfall(forecast)
-    if (totalCm > maxSnow) {
-      maxSnow = totalCm
+    if (totalCm > maxSnowCm) {
+      maxSnowCm = totalCm
       topSlug = slug
+      topForecast = forecast
     }
   }
   
-  if (!topSlug) return null
+  if (!topSlug || !topForecast) return null
   
   const resort = resortsStore.getResortBySlug(topSlug)
-  const inches = convertPrecipitation(maxSnow, 'cm', 'in') ?? 0
   
-  return resort ? { resort, inches } : null
+  // Convert to inches for powder threshold check (6" = powder day)
+  const inches = convertPrecipitation(maxSnowCm, 'cm', 'in') ?? 0
+  
+  // Convert to user's preferred unit for display
+  const snowUnit = topForecast.hourly_units.snowfall || 'cm'
+  const displayValue = convertPrecipitation(maxSnowCm, snowUnit, settingsStore.precipitationUnit) ?? 0
+  const unitLabel = settingsStore.precipitationUnit === 'in' ? '"' : ' cm'
+  
+  return resort ? { resort, inches, displayValue, unitLabel } : null
 })
 </script>
 

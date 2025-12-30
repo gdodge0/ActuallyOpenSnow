@@ -154,10 +154,10 @@ function handleModelChange(modelId: string) {
       <!-- Current Conditions -->
       <WeatherStats :forecast="forecastStore.currentForecast" />
       
-      <!-- Snow Graph -->
+      <!-- Snow Graph with time range selector -->
       <SnowGraph 
         :forecast="forecastStore.currentForecast" 
-        :hours-to-show="72"
+        :initial-hours="72"
       />
       
       <!-- Daily Breakdown -->
