@@ -112,7 +112,7 @@ const topSnowResort = computed(() => {
             </RouterLink>
             expecting 
             <span class="text-snow-400 font-bold">
-              {{ Math.round(topSnowResort.inches) }}"
+              {{ Math.round(topSnowResort.displayValue) }}{{ topSnowResort.unitLabel }}
             </span>
             in the next 7 days
           </p>
