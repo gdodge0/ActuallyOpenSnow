@@ -98,8 +98,9 @@ async def lifespan(app: FastAPI):
     executor = ThreadPoolExecutor(max_workers=10)  # Parallel API calls
     # Clear blend cache on startup (ensures fresh data after weight changes)
     blend_cache.clear()
-    print(f"[Startup] Blend weights: {BLEND_MODEL_WEIGHTS}")
-    print(f"[Startup] Total weight: {sum(BLEND_MODEL_WEIGHTS.values())}")
+    weights = get_blend_weights()
+    print(f"[Startup] Blend weights: {weights}")
+    print(f"[Startup] Total weight: {sum(weights.values())}")
     yield
     # Cleanup
     if client:
@@ -178,7 +179,7 @@ def create_blend_forecast(
     lon: float,
     elevation_m: float | None,
     model_run_times: list[datetime],
-    weights: dict[str, float] | None = None,
+    weights: dict[str, float],
 ) -> ForecastResponse:
     """Create a blended forecast using weighted averaging of multiple models.
     
@@ -188,13 +189,12 @@ def create_blend_forecast(
         lon: Requested longitude
         elevation_m: Elevation in meters
         model_run_times: List of model run times
-        weights: Optional custom weights (defaults to BLEND_MODEL_WEIGHTS)
+        weights: Weights for each model
     """
     if not forecasts:
         raise ValueError("No forecasts to blend")
     
-    # Use configured weights or provided custom weights
-    model_weights = weights or BLEND_MODEL_WEIGHTS
+    model_weights = weights
     
     # Use the first forecast as a template
     first_model_id = next(iter(forecasts.keys()))
@@ -283,8 +283,11 @@ async def fetch_blend_forecast(
     if executor is None:
         raise HTTPException(status_code=503, detail="Thread pool not initialized")
     
-    # Check cache first
-    cache_key = get_blend_cache_key(lat, lon, elevation)
+    # Get current weights from environment variables
+    weights = get_blend_weights()
+    
+    # Check cache first (cache key includes weights)
+    cache_key = get_blend_cache_key(lat, lon, elevation, weights)
     cached = get_cached_blend(cache_key)
     if cached:
         return cached
@@ -318,8 +321,8 @@ async def fetch_blend_forecast(
             detail=f"All models failed for blend: {'; '.join(errors)}",
         )
     
-    # Create blend
-    response = create_blend_forecast(forecasts, lat, lon, elevation, model_run_times)
+    # Create blend with current weights
+    response = create_blend_forecast(forecasts, lat, lon, elevation, model_run_times, weights)
     
     # Cache the result
     set_cached_blend(cache_key, response)
@@ -343,11 +346,14 @@ async def health_check():
 # ============================================================================
 
 
-def get_blend_description() -> str:
-    """Generate blend model description from current weights."""
+def get_blend_description(weights: dict[str, float] | None = None) -> str:
+    """Generate blend model description from weights."""
+    if weights is None:
+        weights = get_blend_weights()
+    
     # Group models by weight
     weight_groups: dict[float, list[str]] = {}
-    for model_id, weight in BLEND_MODEL_WEIGHTS.items():
+    for model_id, weight in weights.items():
         if weight not in weight_groups:
             weight_groups[weight] = []
         weight_groups[weight].append(model_id.upper())
@@ -698,12 +704,17 @@ async def get_blend_config():
     
     Set a weight to 0 to exclude that model from the blend.
     """
+    weights = get_blend_weights()
     return {
         "models": BLEND_MODELS,
-        "weights": BLEND_MODEL_WEIGHTS,
-        "description": get_blend_description(),
-        "total_weight": sum(BLEND_MODEL_WEIGHTS.values()),
+        "weights": weights,
+        "description": get_blend_description(weights),
+        "total_weight": sum(weights.values()),
         "config_method": "environment_variables",
+        "env_vars_checked": {
+            f"BLEND_WEIGHT_{m.upper()}": os.environ.get(f"BLEND_WEIGHT_{m.upper()}", "not set")
+            for m in BLEND_MODELS
+        },
     }
 
 
@@ -718,6 +729,9 @@ async def debug_blend(
         raise HTTPException(status_code=503, detail="Weather client not initialized")
     if executor is None:
         raise HTTPException(status_code=503, detail="Thread pool not initialized")
+    
+    # Get current weights from environment
+    weights = get_blend_weights()
     
     # Fetch all models in parallel
     loop = asyncio.get_event_loop()
@@ -741,7 +755,7 @@ async def debug_blend(
                 "total_cm": round(total_cm, 2),
                 "total_inches": round(total_inches, 2),
                 "hours": len(snowfall),
-                "weight": BLEND_MODEL_WEIGHTS.get(model_id, 1.0),
+                "weight": weights.get(model_id, 1.0),
             }
         else:
             model_errors[model_id] = error
@@ -758,7 +772,11 @@ async def debug_blend(
     
     return {
         "location": {"lat": lat, "lon": lon, "elevation": elevation},
-        "weights_config": BLEND_MODEL_WEIGHTS,
+        "weights_config": weights,
+        "env_vars": {
+            f"BLEND_WEIGHT_{m.upper()}": os.environ.get(f"BLEND_WEIGHT_{m.upper()}", "not set")
+            for m in BLEND_MODELS
+        },
         "models": model_totals,
         "errors": model_errors,
         "blend_calculation": {
