@@ -41,18 +41,26 @@ from app.resorts import RESORTS, get_resort_by_slug, Resort
 # Set weight to 0 to exclude a model from the blend
 import os
 
+# Default weights
+DEFAULT_BLEND_WEIGHTS = {
+    "gfs": 2.0,    # NOAA GFS - reliable global model
+    "ifs": 2.0,    # ECMWF IFS - gold standard
+    "aifs": 2.0,   # ECMWF AIFS - AI-enhanced
+    "icon": 1.0,   # DWD ICON - European model
+    "jma": 1.0,    # JMA - Japanese model
+}
+
+# All possible blend models
+BLEND_MODELS = list(DEFAULT_BLEND_WEIGHTS.keys())
+
+
 def get_blend_weights() -> dict[str, float]:
-    """Get blend weights from environment variables with defaults."""
-    defaults = {
-        "gfs": 2.0,    # NOAA GFS - reliable global model
-        "ifs": 2.0,    # ECMWF IFS - gold standard
-        "aifs": 2.0,   # ECMWF AIFS - AI-enhanced
-        "icon": 1.0,   # DWD ICON - European model
-        "jma": 1.0,    # JMA - Japanese model
-    }
+    """Get blend weights from environment variables with defaults.
     
+    Called on each request to pick up any environment variable changes.
+    """
     weights = {}
-    for model_id, default_weight in defaults.items():
+    for model_id, default_weight in DEFAULT_BLEND_WEIGHTS.items():
         env_var = f"BLEND_WEIGHT_{model_id.upper()}"
         env_value = os.environ.get(env_var)
         
@@ -61,6 +69,7 @@ def get_blend_weights() -> dict[str, float]:
                 weight = float(env_value)
                 if weight > 0:  # Only include models with positive weight
                     weights[model_id] = weight
+                # If weight is 0 or negative, exclude model
             except ValueError:
                 # Invalid value, use default
                 weights[model_id] = default_weight
@@ -68,12 +77,6 @@ def get_blend_weights() -> dict[str, float]:
             weights[model_id] = default_weight
     
     return weights
-
-# Initialize weights from environment
-BLEND_MODEL_WEIGHTS: dict[str, float] = get_blend_weights()
-
-# List of models to include (only those with positive weight)
-BLEND_MODELS = list(BLEND_MODEL_WEIGHTS.keys())
 
 # Global client instance
 client: MeteoClient | None = None
@@ -122,10 +125,10 @@ app.add_middleware(
 )
 
 
-def get_blend_cache_key(lat: float, lon: float, elevation: float | None) -> str:
+def get_blend_cache_key(lat: float, lon: float, elevation: float | None, weights: dict[str, float]) -> str:
     """Generate a cache key for blend forecasts."""
     # Include weights in cache key so weight changes invalidate cache
-    weights_str = ",".join(f"{k}:{v}" for k, v in sorted(BLEND_MODEL_WEIGHTS.items()))
+    weights_str = ",".join(f"{k}:{v}" for k, v in sorted(weights.items()))
     key_data = f"{lat:.4f}:{lon:.4f}:{elevation}:{weights_str}"
     return hashlib.md5(key_data.encode()).hexdigest()
 
