@@ -1,0 +1,12 @@
+# ActuallyOpenSnow robots.txt
+# https://actuallyopensnow.com
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://actuallyopensnow.com/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
