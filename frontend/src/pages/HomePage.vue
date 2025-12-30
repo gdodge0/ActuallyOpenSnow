@@ -3,30 +3,62 @@ import { computed, ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useResortsStore } from '@/stores/resorts'
 import { useSettingsStore } from '@/stores/settings'
+import { useCustomLocationsStore } from '@/stores/customLocations'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { Resort, Forecast } from '@/types'
-import { fetchBatchForecasts } from '@/utils/api'
+import { fetchBatchForecasts, fetchForecast } from '@/utils/api'
 import { getTotalSnowfall } from '@/utils/forecast'
 import { convertPrecipitation, formatSnowfall } from '@/utils/units'
 
 const resortsStore = useResortsStore()
 const settingsStore = useSettingsStore()
+const customLocationsStore = useCustomLocationsStore()
 
 // Featured resorts with quick forecasts
 const featuredSlugs = ['jackson-hole', 'alta', 'mammoth-mountain', 'vail', 'big-sky', 'whistler-blackcomb']
 const featuredForecasts = ref<Map<string, Forecast>>(new Map())
+const favoriteForecasts = ref<Map<string, Forecast>>(new Map())
+const customLocationForecasts = ref<Map<string, Forecast>>(new Map())
 const loadingFeatured = ref(true)
 
-// Load featured resort forecasts using batch endpoint (single HTTP request)
+// Load all forecasts (featured, favorites, custom locations)
 onMounted(async () => {
   loadingFeatured.value = true
   
   try {
-    // Fetch all blend forecasts in a single batch request
-    const forecasts = await fetchBatchForecasts(featuredSlugs, 'blend')
-    featuredForecasts.value = forecasts
+    // Get favorite slugs that aren't already in featured
+    const favoriteSlugs = resortsStore.favoriteResorts
+      .map(r => r.slug)
+      .filter(slug => !featuredSlugs.includes(slug))
+    
+    // Fetch featured + favorites in batch
+    const allResortSlugs = [...featuredSlugs, ...favoriteSlugs]
+    const resortForecasts = await fetchBatchForecasts(allResortSlugs, 'blend')
+    
+    // Split into featured and favorites
+    for (const [slug, forecast] of resortForecasts) {
+      if (featuredSlugs.includes(slug)) {
+        featuredForecasts.value.set(slug, forecast)
+      } else {
+        favoriteForecasts.value.set(slug, forecast)
+      }
+    }
+    
+    // Fetch custom location forecasts in parallel
+    const customLocations = customLocationsStore.locations
+    if (customLocations.length > 0) {
+      const customPromises = customLocations.map(async (loc) => {
+        try {
+          const forecast = await fetchForecast(loc.lat, loc.lon, 'blend', loc.elevation_m)
+          customLocationForecasts.value.set(loc.id, forecast)
+        } catch (e) {
+          console.error(`Failed to load forecast for custom location ${loc.name}:`, e)
+        }
+      })
+      await Promise.allSettled(customPromises)
+    }
   } catch (e) {
-    console.error('Failed to load featured forecasts:', e)
+    console.error('Failed to load forecasts:', e)
   }
   
   loadingFeatured.value = false
@@ -59,24 +91,57 @@ function hasPowder(slug: string): boolean {
   return (inches ?? 0) >= 6
 }
 
-// Get the resort with most snow
-const topSnowResort = computed(() => {
+// Type for powder alert location (can be resort or custom location)
+interface PowderAlertLocation {
+  type: 'resort' | 'custom'
+  name: string
+  link: string
+  inches: number
+  displayValue: number
+  unitLabel: string
+}
+
+// Get the location with most snow (from featured, favorites, AND custom locations)
+const topSnowLocation = computed((): PowderAlertLocation | null => {
   let maxSnowCm = 0
-  let topSlug = ''
+  let topId = ''
   let topForecast: Forecast | null = null
+  let topType: 'resort' | 'custom' = 'resort'
   
+  // Check featured resorts
   for (const [slug, forecast] of featuredForecasts.value) {
     const totalCm = getTotalSnowfall(forecast)
     if (totalCm > maxSnowCm) {
       maxSnowCm = totalCm
-      topSlug = slug
+      topId = slug
       topForecast = forecast
+      topType = 'resort'
     }
   }
   
-  if (!topSlug || !topForecast) return null
+  // Check favorite resorts
+  for (const [slug, forecast] of favoriteForecasts.value) {
+    const totalCm = getTotalSnowfall(forecast)
+    if (totalCm > maxSnowCm) {
+      maxSnowCm = totalCm
+      topId = slug
+      topForecast = forecast
+      topType = 'resort'
+    }
+  }
   
-  const resort = resortsStore.getResortBySlug(topSlug)
+  // Check custom locations
+  for (const [id, forecast] of customLocationForecasts.value) {
+    const totalCm = getTotalSnowfall(forecast)
+    if (totalCm > maxSnowCm) {
+      maxSnowCm = totalCm
+      topId = id
+      topForecast = forecast
+      topType = 'custom'
+    }
+  }
+  
+  if (!topId || !topForecast) return null
   
   // Convert to inches for powder threshold check (6" = powder day)
   const inches = convertPrecipitation(maxSnowCm, 'cm', 'in') ?? 0
@@ -86,7 +151,30 @@ const topSnowResort = computed(() => {
   const displayValue = convertPrecipitation(maxSnowCm, snowUnit, settingsStore.precipitationUnit) ?? 0
   const unitLabel = settingsStore.precipitationUnit === 'in' ? '"' : ' cm'
   
-  return resort ? { resort, inches, displayValue, unitLabel } : null
+  // Get name and link based on type
+  if (topType === 'resort') {
+    const resort = resortsStore.getResortBySlug(topId)
+    if (!resort) return null
+    return {
+      type: 'resort',
+      name: resort.name,
+      link: `/resort/${resort.slug}`,
+      inches,
+      displayValue,
+      unitLabel,
+    }
+  } else {
+    const customLoc = customLocationsStore.getLocationById(topId)
+    if (!customLoc) return null
+    return {
+      type: 'custom',
+      name: customLoc.name,
+      link: `/custom/${customLoc.id}`,
+      inches,
+      displayValue,
+      unitLabel,
+    }
+  }
 })
 </script>
 
@@ -94,7 +182,7 @@ const topSnowResort = computed(() => {
   <div class="space-y-8">
     <!-- Powder Alert Banner -->
     <div 
-      v-if="topSnowResort && topSnowResort.inches >= 6"
+      v-if="topSnowLocation && topSnowLocation.inches >= 6"
       class="powder-alert rounded-2xl p-6 md:p-8"
     >
       <div class="flex items-center gap-4">
@@ -105,14 +193,15 @@ const topSnowResort = computed(() => {
           </h2>
           <p class="text-mountain-200 mt-1">
             <RouterLink 
-              :to="`/resort/${topSnowResort.resort.slug}`"
+              :to="topSnowLocation.link"
               class="text-snow-400 hover:text-snow-300 font-semibold"
             >
-              {{ topSnowResort.resort.name }}
+              {{ topSnowLocation.name }}
             </RouterLink>
-            expecting 
+            <span v-if="topSnowLocation.type === 'custom'" class="text-mountain-400 text-sm ml-1">(custom)</span>
+            is expecting 
             <span class="text-snow-400 font-bold">
-              {{ Math.round(topSnowResort.displayValue) }}{{ topSnowResort.unitLabel }}
+              {{ Math.round(topSnowLocation.displayValue) }}{{ topSnowLocation.unitLabel }}
             </span>
             in the next 7 days
           </p>
