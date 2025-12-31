@@ -11,6 +11,8 @@ services:
       - "8000"
     environment:
       - PYTHONUNBUFFERED=1
+      # Production mode - disables debug endpoints
+      - ENVIRONMENT=production
       # Blend model weights (higher = more influence)
       # GFS, IFS, AIFS weighted 2x (primary models)
       # ICON, JMA weighted 1x (supplementary models)

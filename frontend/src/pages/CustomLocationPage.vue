@@ -6,6 +6,7 @@ import { useForecastStore } from '@/stores/forecast'
 import { useSettingsStore } from '@/stores/settings'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import RateLimitError from '@/components/common/RateLimitError.vue'
 import SnowfallCard from '@/components/forecast/SnowfallCard.vue'
 import DailyBreakdown from '@/components/forecast/DailyBreakdown.vue'
 import SnowGraph from '@/components/forecast/SnowGraph.vue'
@@ -44,6 +45,7 @@ watch(location, (loc) => {
 const forecast = ref<Forecast | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+const isRateLimitError = ref(false)
 const selectedModel = ref('blend')
 
 // Elevation override state (always stored in meters internally)
@@ -85,6 +87,7 @@ async function loadForecast() {
   
   loading.value = true
   error.value = null
+  isRateLimitError.value = false
   
   try {
     forecast.value = await fetchForecast(
@@ -93,7 +96,17 @@ async function loadForecast() {
       selectedModel.value,
       effectiveElevation.value
     )
-  } catch (e) {
+  } catch (e: unknown) {
+    // Check for rate limit error (429 status)
+    if (e && typeof e === 'object' && 'response' in e) {
+      const axiosError = e as { response?: { status?: number } }
+      if (axiosError.response?.status === 429) {
+        isRateLimitError.value = true
+        error.value = 'Rate limit exceeded'
+        console.warn('Rate limit exceeded for custom location forecast')
+        return
+      }
+    }
     error.value = e instanceof Error ? e.message : 'Failed to load forecast'
     console.error('Failed to load forecast:', e)
   } finally {
@@ -325,7 +338,14 @@ function handleModelChange(modelId: string) {
       <LoadingSpinner size="lg" text="Loading forecast..." />
     </div>
     
-    <!-- Error -->
+    <!-- Rate Limit Error -->
+    <RateLimitError 
+      v-else-if="isRateLimitError"
+      :retry-after-seconds="10"
+      @retry="loadForecast"
+    />
+    
+    <!-- General Error -->
     <ErrorAlert 
       v-else-if="error"
       :message="error"

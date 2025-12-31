@@ -4,6 +4,9 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 python-dotenv==1.0.1
 
+# Rate limiting
+slowapi==0.1.9
+
 # Reference the weather package (installed in editable mode)
 # Run: pip install -e ../weather
 

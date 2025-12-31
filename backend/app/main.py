@@ -7,6 +7,7 @@ import hashlib
 import json
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -14,8 +15,12 @@ from datetime import datetime
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Add weather package to path
 weather_path = Path(__file__).parent.parent.parent / "weather" / "src"
@@ -40,6 +45,22 @@ from app.resorts import RESORTS, get_resort_by_slug, Resort
 #   etc.
 # Set weight to 0 to exclude a model from the blend
 import os
+
+# ============================================================================
+# Production Mode & Rate Limiting Configuration
+# ============================================================================
+
+# Production mode - set ENVIRONMENT=production to disable debug endpoints
+PRODUCTION_MODE = os.environ.get("ENVIRONMENT", "development").lower() == "production"
+
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address)
+
+# Unique coordinates rate limiting (per IP)
+# Tracks unique coordinate pairs requested per IP in a time window
+UNIQUE_COORDS_WINDOW = 3600  # 1 hour window
+UNIQUE_COORDS_LIMIT = 100    # Max 100 unique coordinate pairs per hour per IP
+unique_coords_tracker: dict[str, dict[str, float]] = defaultdict(dict)  # IP -> {coord_key: timestamp}
 
 # Default weights
 DEFAULT_BLEND_WEIGHTS = {
@@ -99,6 +120,8 @@ async def lifespan(app: FastAPI):
     # Clear blend cache on startup (ensures fresh data after weight changes)
     blend_cache.clear()
     weights = get_blend_weights()
+    print(f"[Startup] Production mode: {PRODUCTION_MODE}")
+    print(f"[Startup] Debug endpoints: {'DISABLED' if PRODUCTION_MODE else 'ENABLED'}")
     print(f"[Startup] Blend weights: {weights}")
     print(f"[Startup] Total weight: {sum(weights.values())}")
     yield
@@ -116,6 +139,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register rate limiter
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors."""
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": f"Rate limit exceeded: {exc.detail}",
+            "error_type": "rate_limit_exceeded",
+            "message": "You've made too many requests. Please wait a moment before trying again.",
+            "limit": str(exc.detail),
+        },
+    )
+
+
 # CORS - allow all origins in production (nginx handles security)
 app.add_middleware(
     CORSMiddleware,
@@ -124,6 +165,43 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================================
+# Unique Coordinates Rate Limiting
+# ============================================================================
+
+
+def check_unique_coords_limit(request: Request, lat: float, lon: float) -> None:
+    """Check if IP has exceeded unique coordinates limit.
+    
+    Raises HTTPException 429 if limit exceeded.
+    """
+    ip = get_remote_address(request)
+    coord_key = f"{lat:.4f}:{lon:.4f}"
+    now = time.time()
+    
+    # Clean up old entries for this IP
+    if ip in unique_coords_tracker:
+        unique_coords_tracker[ip] = {
+            k: v for k, v in unique_coords_tracker[ip].items()
+            if now - v < UNIQUE_COORDS_WINDOW
+        }
+    
+    # Check if this coordinate was already requested (doesn't count against limit)
+    if coord_key in unique_coords_tracker[ip]:
+        unique_coords_tracker[ip][coord_key] = now  # Update timestamp
+        return
+    
+    # Check if limit exceeded
+    if len(unique_coords_tracker[ip]) >= UNIQUE_COORDS_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Unique coordinates limit exceeded: max {UNIQUE_COORDS_LIMIT} unique locations per hour",
+        )
+    
+    # Record this new coordinate
+    unique_coords_tracker[ip][coord_key] = now
 
 
 def get_blend_cache_key(lat: float, lon: float, elevation: float | None, weights: dict[str, float]) -> str:
@@ -400,7 +478,8 @@ def get_blend_description(weights: dict[str, float] | None = None) -> str:
 
 
 @app.get("/api/models", response_model=list[ModelInfo])
-async def get_models():
+@limiter.limit("120/minute")
+async def get_models(request: Request):
     """List all available forecast models."""
     models = list_available_models()
     
@@ -433,7 +512,8 @@ async def get_models():
 
 
 @app.get("/api/models/{model_id}", response_model=ModelInfo)
-async def get_model(model_id: str):
+@limiter.limit("120/minute")
+async def get_model(request: Request, model_id: str):
     """Get details for a specific model."""
     if model_id == "blend":
         return ModelInfo(
@@ -465,7 +545,9 @@ async def get_model(model_id: str):
 
 
 @app.get("/api/resorts", response_model=list[Resort])
+@limiter.limit("120/minute")
 async def get_resorts(
+    request: Request,
     state: Optional[str] = Query(None, description="Filter by state/province code"),
 ):
     """List all ski resorts."""
@@ -475,10 +557,12 @@ async def get_resorts(
 
 
 @app.get("/api/resorts/batch/forecast")
+@limiter.limit("30/minute")
 async def batch_resort_forecasts(
+    request: Request,
     slugs: str = Query(..., description="Comma-separated resort slugs"),
     model: str = Query("blend", description="Forecast model ID"),
-    elevation: str = Query("summit", description="'base', 'summit', or meters"),
+    elevation: str = Query("summit", description="'base', 'summit', or meters (0-9000)"),
 ):
     """Fetch forecasts for multiple resorts in a single request."""
     if client is None:
@@ -504,6 +588,9 @@ async def batch_resort_forecasts(
         else:
             try:
                 elev_m = float(elevation)
+                # Validate elevation range
+                if elev_m < 0 or elev_m > 9000:
+                    return slug, None, "Elevation must be between 0 and 9000 meters"
             except ValueError:
                 elev_m = resort.summit_elevation_m
         
@@ -543,7 +630,8 @@ async def batch_resort_forecasts(
 
 
 @app.get("/api/resorts/{slug}", response_model=Resort)
-async def get_resort(slug: str):
+@limiter.limit("120/minute")
+async def get_resort(request: Request, slug: str):
     """Get a resort by slug."""
     resort = get_resort_by_slug(slug)
     if not resort:
@@ -557,15 +645,20 @@ async def get_resort(slug: str):
 
 
 @app.get("/api/forecast", response_model=ForecastResponse)
+@limiter.limit("10/minute")
 async def get_forecast(
+    request: Request,
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
     model: str = Query("blend", description="Forecast model ID (default: blend)"),
-    elevation: Optional[float] = Query(None, description="Elevation override in meters"),
+    elevation: Optional[float] = Query(None, ge=0, le=9000, description="Elevation override in meters (0-9000)"),
 ):
     """Get a weather forecast for coordinates."""
     if client is None:
         raise HTTPException(status_code=503, detail="Weather client not initialized")
+    
+    # Check unique coordinates rate limit
+    check_unique_coords_limit(request, lat, lon)
     
     # Handle blend model
     if model == "blend":
@@ -588,10 +681,12 @@ async def get_forecast(
 
 
 @app.get("/api/resorts/{slug}/forecast", response_model=ForecastResponse)
+@limiter.limit("120/minute")
 async def get_resort_forecast(
+    request: Request,
     slug: str,
     model: str = Query("blend", description="Forecast model ID (default: blend)"),
-    elevation: Optional[str] = Query("summit", description="'base', 'summit', or meters"),
+    elevation: Optional[str] = Query("summit", description="'base', 'summit', or meters (0-9000)"),
 ):
     """Get forecast for a resort."""
     if client is None:
@@ -610,10 +705,16 @@ async def get_resort_forecast(
     elif elevation:
         try:
             elev_m = float(elevation)
+            # Validate elevation range
+            if elev_m < 0 or elev_m > 9000:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Elevation must be between 0 and 9000 meters",
+                )
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail="Elevation must be 'base', 'summit', or a number in meters",
+                detail="Elevation must be 'base', 'summit', or a number in meters (0-9000)",
             )
     
     # Handle blend model
@@ -637,15 +738,20 @@ async def get_resort_forecast(
 
 
 @app.get("/api/compare", response_model=ComparisonResponse)
+@limiter.limit("10/minute")
 async def compare_models(
+    request: Request,
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
     models: str = Query("blend,gfs,ifs,aifs", description="Comma-separated model IDs"),
-    elevation: Optional[float] = Query(None, description="Elevation override in meters"),
+    elevation: Optional[float] = Query(None, ge=0, le=9000, description="Elevation override in meters (0-9000)"),
 ):
     """Compare forecasts from multiple models."""
     if client is None:
         raise HTTPException(status_code=503, detail="Weather client not initialized")
+    
+    # Check unique coordinates rate limit
+    check_unique_coords_limit(request, lat, lon)
     
     model_ids = [m.strip() for m in models.split(",") if m.strip()]
     if not model_ids:
@@ -684,10 +790,12 @@ async def compare_models(
 
 
 @app.get("/api/resorts/{slug}/compare", response_model=ComparisonResponse)
+@limiter.limit("60/minute")
 async def compare_resort_models(
+    request: Request,
     slug: str,
     models: str = Query("blend,gfs,ifs,aifs", description="Comma-separated model IDs"),
-    elevation: Optional[str] = Query("summit", description="'base', 'summit', or meters"),
+    elevation: Optional[str] = Query("summit", description="'base', 'summit', or meters (0-9000)"),
 ):
     """Compare forecasts from multiple models for a resort."""
     resort = get_resort_by_slug(slug)
@@ -703,10 +811,16 @@ async def compare_resort_models(
     elif elevation:
         try:
             elev_m = float(elevation)
+            # Validate elevation range
+            if elev_m < 0 or elev_m > 9000:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Elevation must be between 0 and 9000 meters",
+                )
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail="Elevation must be 'base', 'summit', or a number in meters",
+                detail="Elevation must be 'base', 'summit', or a number in meters (0-9000)",
             )
     
     return await compare_models(
@@ -723,7 +837,8 @@ async def compare_resort_models(
 
 
 @app.get("/api/blend/config")
-async def get_blend_config():
+@limiter.limit("60/minute")
+async def get_blend_config(request: Request):
     """Get current blend model configuration.
     
     Weights are configured via environment variables:
@@ -753,9 +868,13 @@ async def get_blend_config():
 async def debug_blend(
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
-    elevation: Optional[float] = Query(None, description="Elevation in meters"),
+    elevation: Optional[float] = Query(None, ge=0, le=9000, description="Elevation in meters (0-9000)"),
 ):
-    """Debug endpoint to see individual model totals and blend calculation."""
+    """Debug endpoint to see individual model totals and blend calculation. Disabled in production."""
+    # Disabled in production for security
+    if PRODUCTION_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
+    
     if client is None:
         raise HTTPException(status_code=503, detail="Weather client not initialized")
     if executor is None:
@@ -826,7 +945,11 @@ async def debug_blend(
 
 @app.post("/api/cache/clear")
 async def clear_cache():
-    """Clear all caches (admin endpoint)."""
+    """Clear all caches (admin endpoint). Disabled in production."""
+    # Disabled in production for security
+    if PRODUCTION_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
+    
     global blend_cache
     
     if client:
@@ -838,7 +961,8 @@ async def clear_cache():
 
 
 @app.get("/api/cache/stats")
-async def cache_stats():
+@limiter.limit("60/minute")
+async def cache_stats(request: Request):
     """Get cache statistics."""
     now = time.time()
     valid_entries = sum(1 for ts, _ in blend_cache.values() if now - ts < BLEND_CACHE_TTL)
