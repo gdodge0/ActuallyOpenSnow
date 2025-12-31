@@ -27,9 +27,16 @@ src/weather/utils/__init__.py
 src/weather/utils/geo.py
 src/weather/utils/time.py
 tests/test_client_openmeteo_mocked.py
+tests/test_config_models.py
+tests/test_domain_errors.py
 tests/test_equivalence.py
 tests/test_forecast_getters.py
+tests/test_forecast_serialization.py
 tests/test_openmeteo_parser.py
+tests/test_openmeteo_units.py
+tests/test_quantities.py
 tests/test_range_totals.py
 tests/test_units_convert.py
 tests/test_units_normalize.py
+tests/test_utils_geo.py
+tests/test_utils_time.py

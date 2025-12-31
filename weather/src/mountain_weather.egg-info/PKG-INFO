@@ -31,33 +31,26 @@ Requires-Dist: responses>=0.23.0; extra == "dev"
 Requires-Dist: mypy>=1.5.0; extra == "dev"
 Requires-Dist: ruff>=0.1.0; extra == "dev"
 
-# Mountain Weather
+# Weather API Library
 
-A stable, typed Python API for fetching mountain-relevant weather forecasts using Open-Meteo.
+Python library for fetching and processing weather forecasts from Open-Meteo.
 
-## Features
+## Overview
 
-- **Multiple forecast models**: GFS, IFS, AIFS with easy model selection
-- **Mountain-focused variables**: Temperature, wind, snow, precipitation, freezing level
-- **Built-in caching**: Request caching via `requests-cache` for efficient API usage
-- **Automatic retries**: Exponential backoff with `retry-requests`
-- **Unit conversions**: Temperature (C/F/K), wind (km/h, m/s, mph, kn), precipitation (mm/in)
-- **Range queries**: Get totals over datetime or timedelta windows
-- **Typed data models**: Easy serialization for web backends
-- **Forecast equivalence**: Compare forecasts by location, model, and run time
+A clean, typed Python library that provides:
+- Multi-model weather forecast fetching
+- Automatic request caching and retries
+- Unit conversions and data transformations
+- Structured forecast data with type hints
 
 ## Installation
 
 ```bash
-pip install mountain-weather
-```
+# From the weather directory
+pip install -e .
 
-Or install from source:
-
-```bash
-git clone https://github.com/example/mountain-weather.git
-cd mountain-weather
-pip install -e ".[dev]"
+# Or install dependencies directly
+pip install -r requirements.txt
 ```
 
 ## Quick Start
@@ -65,46 +58,42 @@ pip install -e ".[dev]"
 ```python
 from weather import MeteoClient
 
-# Create client with default settings (caching + retries enabled)
-client = MeteoClient()
+# Create client (with 30-minute cache)
+client = MeteoClient(cache_expire_after=1800)
 
-# Get forecast for Jackson Hole, WY
+# Fetch a forecast
 forecast = client.get_forecast(
-    lat=43.4799,
-    lon=-110.7624,
+    lat=43.5872,
+    lon=-110.8281,
     model="gfs",
-    elevation=3185,  # Summit elevation in meters
+    elevation=3185,
 )
 
-# Access hourly data with unit conversion
-temps = forecast.get_temperature_2m(unit="F")
-print(f"Temperature: {temps.values[:6]} {temps.unit}")
-
-winds = forecast.get_wind_speed_10m(unit="mph")
-print(f"Wind: {winds.values[:6]} {winds.unit}")
-
-# Get snow totals for next 48 hours
-from datetime import timedelta
-snow_total = forecast.get_snowfall_total(
-    unit="in",
-    start=timedelta(hours=0),
-    end=timedelta(hours=48),
-)
-print(f"48hr snowfall: {snow_total.value:.1f} {snow_total.unit}")
-
-# Check forecast metadata
+# Access data
+print(f"Location: {forecast.lat}, {forecast.lon}")
 print(f"Model: {forecast.model_id}")
-print(f"Model run: {forecast.model_run_utc}")
-print(f"Elevation: {forecast.elevation_m}m")
+print(f"Hours: {len(forecast.times_utc)}")
+
+# Get snowfall totals
+snowfall = forecast.get_snowfall()
+print(f"Total snowfall: {snowfall.total()}")
+
+# Get temperature series
+temps = forecast.get_temperature_2m(unit="F")
+print(f"Current temp: {temps.values[0]}°F")
 ```
 
 ## Available Models
 
-| Model | ID | Max Horizon | Resolution |
-|-------|-----|-------------|------------|
-| GFS (NOAA) | `gfs` | 16 days | 0.25° |
-| IFS (ECMWF) | `ifs` | 10 days | 0.25° |
-| AIFS (ECMWF AI) | `aifs` | 15 days | 0.25° |
+| Model ID | Name | Provider | Resolution |
+|----------|------|----------|------------|
+| `gfs` | GFS | NOAA | 0.25° |
+| `ifs` | IFS | ECMWF | 0.25° |
+| `aifs` | AIFS | ECMWF | 0.25° |
+| `icon` | ICON | DWD | 0.125° |
+| `jma` | JMA | JMA | 0.25° |
+| `gem` | GEM | ECCC | 0.25° |
+| `ukmo` | UKMO | Met Office | 0.25° |
 
 ## API Reference
 
@@ -112,133 +101,188 @@ print(f"Elevation: {forecast.elevation_m}m")
 
 ```python
 client = MeteoClient(
-    cache_expire_after=3600,  # Cache TTL in seconds (default: 1 hour)
-    max_retries=3,            # Max retry attempts (default: 3)
-    backoff_factor=0.5,       # Backoff multiplier (default: 0.5)
-)
-
-forecast = client.get_forecast(
-    lat=43.4799,
-    lon=-110.7624,
-    model="gfs",              # Model ID (default: "gfs")
-    elevation=3185,           # Optional elevation override in meters
-    temperature_unit="C",     # Unit preference for temperature
-    wind_speed_unit="kmh",    # Unit preference for wind
-    precipitation_unit="mm",  # Unit preference for precip/snow
+    cache_expire_after=3600,  # Cache TTL in seconds
+    max_retries=3,            # Retry attempts
+    backoff_factor=0.5,       # Retry backoff
+    timeout=30,               # Request timeout
 )
 ```
 
-### Forecast
+### get_forecast()
 
-The `Forecast` object contains all forecast data and metadata:
+```python
+forecast = client.get_forecast(
+    lat=40.5884,              # Latitude (-90 to 90)
+    lon=-111.6387,            # Longitude (-180 to 180)
+    model="gfs",              # Model ID
+    elevation=3216,           # Optional elevation override (meters)
+    temperature_unit="celsius",
+    wind_speed_unit="kmh",
+    precipitation_unit="mm",
+)
+```
+
+### Forecast Object
 
 ```python
 # Metadata
-forecast.lat              # Requested latitude
-forecast.lon              # Requested longitude
-forecast.api_lat          # API-returned latitude
-forecast.api_lon          # API-returned longitude
-forecast.elevation_m      # Elevation in meters
-forecast.model_id         # Model identifier
-forecast.model_run_utc    # Model run timestamp (UTC)
-forecast.times_utc        # List of forecast timestamps
+forecast.lat                  # Requested latitude
+forecast.lon                  # Requested longitude
+forecast.api_lat              # Actual API grid latitude
+forecast.api_lon              # Actual API grid longitude
+forecast.elevation_m          # Elevation in meters
+forecast.model_id             # Weather model used
+forecast.model_run_utc        # Model run timestamp
 
-# Hourly series getters (return Series with values and unit)
-forecast.get_temperature_2m(unit="C")
-forecast.get_wind_speed_10m(unit="kmh")
-forecast.get_wind_gusts_10m(unit="kmh")
-forecast.get_snowfall(unit="mm")
-forecast.get_precipitation(unit="mm")
-forecast.get_freezing_level_height(unit="m")
+# Time series
+forecast.times_utc            # List of ISO timestamps
+forecast.hourly_data          # Dict of variable → values
+forecast.hourly_units         # Dict of variable → unit
 
-# Accumulated series
-forecast.get_snowfall_accumulated(unit="mm")
-forecast.get_precipitation_accumulated(unit="mm")
-
-# Range totals (return Quantity with value and unit)
-forecast.get_snowfall_total(unit="in", start=..., end=...)
-forecast.get_precipitation_total(unit="mm", start=..., end=...)
+# Helper methods
+forecast.get_temperature_2m(unit="C")  # Temperature series
+forecast.get_snowfall(unit="cm")       # Snowfall series
+forecast.get_snowfall_total(hours=72)  # Total snowfall
+forecast.to_dict()                     # Serialize to dict
 ```
 
-### Range Queries
-
-Range queries accept `datetime` (UTC) or `timedelta` offsets:
+### Series Object
 
 ```python
-from datetime import datetime, timedelta, timezone
+series = forecast.get_snowfall()
 
-# Using timedelta (offset from forecast start)
-snow = forecast.get_snowfall_total(
-    start=timedelta(hours=0),
-    end=timedelta(hours=72),
+series.values      # List of hourly values
+series.unit        # Unit string (e.g., "cm")
+series.total()     # Sum of all values
+series.max()       # Maximum value
+series.min()       # Minimum value
+series.mean()      # Average value
+```
+
+## Project Structure
+
+```
+weather/
+├── src/weather/
+│   ├── __init__.py        # Public API exports
+│   ├── clients/
+│   │   ├── base.py        # Base client class
+│   │   └── openmeteo.py   # Open-Meteo implementation
+│   ├── config/
+│   │   ├── defaults.py    # Default settings
+│   │   └── models.py      # Model configurations
+│   ├── domain/
+│   │   ├── errors.py      # Exception classes
+│   │   ├── forecast.py    # Forecast dataclass
+│   │   └── quantities.py  # Series/Quantity types
+│   └── parsing/
+│       └── openmeteo_parser.py
+├── examples/
+│   └── jackson_hole_aifs.py
+├── pyproject.toml
+└── README.md
+```
+
+## Examples
+
+### Compare Models
+
+```python
+from weather import MeteoClient
+
+client = MeteoClient()
+models = ["gfs", "ifs", "aifs"]
+
+for model_id in models:
+    forecast = client.get_forecast(
+        lat=43.5872,
+        lon=-110.8281,
+        model=model_id,
+    )
+    snowfall = forecast.get_snowfall_total(hours=72)
+    print(f"{model_id.upper()}: {snowfall:.1f} cm")
+```
+
+### Custom Variables
+
+```python
+from weather import MeteoClient
+from weather.config.defaults import DEFAULT_HOURLY_VARIABLES
+
+# Add additional variables
+variables = DEFAULT_HOURLY_VARIABLES + (
+    "soil_temperature_0cm",
+    "soil_moisture_0_to_1cm",
 )
 
-# Using datetime (UTC)
-snow = forecast.get_snowfall_total(
-    start=datetime(2024, 1, 15, 0, tzinfo=timezone.utc),
-    end=datetime(2024, 1, 18, 0, tzinfo=timezone.utc),
-)
+client = MeteoClient(hourly_variables=variables)
+forecast = client.get_forecast(lat=40.0, lon=-105.0, model="gfs")
+
+# Access custom variable
+soil_temp = forecast.hourly_data.get("soil_temperature_0cm")
 ```
 
-Ranges are `[start, end)` (inclusive start, exclusive end) and clamp to available data.
-
-### Forecast Equivalence
-
-Two forecasts are considered equivalent if they:
-- Are within 100 meters (haversine distance)
-- Use the same model
-- Have the same model run time
+### Serialization
 
 ```python
-forecast1 = client.get_forecast(43.48, -110.76, model="gfs")
-forecast2 = client.get_forecast(43.48, -110.76, model="gfs")
+import json
+from weather import MeteoClient
 
-if forecast1.is_equivalent(forecast2):
-    print("Forecasts are equivalent")
+client = MeteoClient()
+forecast = client.get_forecast(lat=40.0, lon=-105.0, model="gfs")
+
+# Convert to dict
+data = forecast.to_dict()
+
+# Save to JSON
+with open("forecast.json", "w") as f:
+    json.dump(data, f, indent=2, default=str)
 ```
 
-## Unit System
-
-### Supported Units
-
-| Category | Units |
-|----------|-------|
-| Temperature | `C`, `F`, `K` |
-| Wind Speed | `kmh`, `ms`, `mph`, `kn` |
-| Precipitation/Snow | `mm`, `cm`, `in`, `ft` |
-| Elevation | `m`, `ft` |
-
-### Unit Conversion
-
-All getters accept a `unit` parameter for automatic conversion:
+## Error Handling
 
 ```python
-# Temperature in different units
-forecast.get_temperature_2m(unit="C")  # Celsius
-forecast.get_temperature_2m(unit="F")  # Fahrenheit
-forecast.get_temperature_2m(unit="K")  # Kelvin
+from weather import MeteoClient, ApiError, ModelError
 
-# Wind in different units
-forecast.get_wind_speed_10m(unit="kmh")  # km/h
-forecast.get_wind_speed_10m(unit="mph")  # mph
-forecast.get_wind_speed_10m(unit="ms")   # m/s
-forecast.get_wind_speed_10m(unit="kn")   # knots
+client = MeteoClient()
+
+try:
+    forecast = client.get_forecast(lat=40.0, lon=-105.0, model="invalid")
+except ModelError as e:
+    print(f"Invalid model: {e}")
+except ApiError as e:
+    print(f"API error: {e}")
 ```
 
-## Testing
+## Caching
+
+The library uses `requests-cache` for automatic caching:
+
+```python
+# Cache stored in .weather_cache SQLite database
+client = MeteoClient(cache_expire_after=3600)  # 1 hour
+
+# Clear cache manually
+client.clear_cache()
+```
+
+## Data Sources
+
+All data from [Open-Meteo](https://open-meteo.com/):
+- Free for non-commercial use
+- No API key required
+- Global coverage
+- Hourly resolution
+
+## Development
 
 ```bash
-# Install dev dependencies
+# Install in development mode
 pip install -e ".[dev]"
 
 # Run tests
 pytest
 
-# Run with coverage
-pytest --cov=weather --cov-report=html
+# Type checking
+mypy src/weather
 ```
-
-## License
-
-MIT License - see LICENSE for details.
-

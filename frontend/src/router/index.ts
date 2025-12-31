@@ -48,6 +48,12 @@ const router = createRouter({
       component: () => import('@/pages/SettingsPage.vue'),
       meta: { title: 'Settings' },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/pages/NotFoundPage.vue'),
+      meta: { title: 'Page Not Found' },
+    },
   ],
   scrollBehavior(_to, _from, savedPosition) {
     // Restore scroll position on back/forward navigation
