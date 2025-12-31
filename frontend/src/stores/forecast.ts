@@ -106,9 +106,10 @@ export const useForecastStore = defineStore('forecast', () => {
     return currentForecast.value?.model_run_utc ?? null
   })
   
-  // Cache key generator
-  function getCacheKey(slug: string, model: string): string {
-    return `${slug}:${model}`
+  // Cache key generator - includes elevation for proper caching
+  function getCacheKey(slug: string, model: string, elevation?: string | number): string {
+    const elevStr = elevation !== undefined ? String(elevation) : 'summit'
+    return `${slug}:${model}:${elevStr}`
   }
   
   // Check if cache is valid
@@ -130,9 +131,11 @@ export const useForecastStore = defineStore('forecast', () => {
   }
   
   // Load forecast for a resort
-  async function loadForecast(slug: string, model?: string) {
+  // elevation can be 'base', 'summit', or a number in meters
+  async function loadForecast(slug: string, model?: string, elevation?: string | number) {
     const modelId = model ?? selectedModel.value
-    const cacheKey = getCacheKey(slug, modelId)
+    const elevStr = elevation !== undefined ? String(elevation) : 'summit'
+    const cacheKey = getCacheKey(slug, modelId, elevStr)
     
     // Check cache
     if (isCacheValid(cacheKey)) {
@@ -144,7 +147,7 @@ export const useForecastStore = defineStore('forecast', () => {
     error.value = null
     
     try {
-      const forecast = await fetchResortForecast(slug, modelId)
+      const forecast = await fetchResortForecast(slug, modelId, elevStr)
       currentForecast.value = forecast
       
       // Update cache
@@ -161,14 +164,17 @@ export const useForecastStore = defineStore('forecast', () => {
   }
   
   // Load comparison for a resort
-  async function loadComparison(slug: string, modelIds?: string[]) {
+  async function loadComparison(slug: string, modelIds?: string[], elevation?: string | number) {
     loading.value = true
     error.value = null
+    
+    const elevStr = elevation !== undefined ? String(elevation) : 'summit'
     
     try {
       comparison.value = await fetchResortComparison(
         slug,
-        modelIds ?? ['blend', 'gfs', 'ifs', 'aifs']
+        modelIds ?? ['blend', 'gfs', 'ifs', 'aifs'],
+        elevStr
       )
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load comparison'

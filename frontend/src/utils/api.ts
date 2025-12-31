@@ -33,8 +33,8 @@ interface CacheEntry {
 const forecastCache = new Map<string, CacheEntry>()
 const CACHE_TTL = 30 * 60 * 1000  // 30 minutes
 
-function getCacheKey(slug: string, model: string): string {
-  return `${slug}:${model}`
+function getCacheKey(slug: string, model: string, elevation: string = 'summit'): string {
+  return `${slug}:${model}:${elevation}`
 }
 
 function getCachedForecast(key: string): Forecast | null {
@@ -91,12 +91,12 @@ export async function fetchResortForecast(
   model: string = 'blend',
   elevation: string = 'summit'
 ): Promise<Forecast> {
-  const cacheKey = getCacheKey(slug, model)
+  const cacheKey = getCacheKey(slug, model, elevation)
   
   // Check cache first
   const cached = getCachedForecast(cacheKey)
   if (cached) {
-    console.log(`[API] Cache hit for ${slug}:${model}`)
+    console.log(`[API] Cache hit for ${slug}:${model}:${elevation}`)
     return cached
   }
   
@@ -123,7 +123,7 @@ export async function fetchBatchForecasts(
   
   // Check cache first for each slug
   for (const slug of slugs) {
-    const cacheKey = getCacheKey(slug, model)
+    const cacheKey = getCacheKey(slug, model, elevation)
     const cached = getCachedForecast(cacheKey)
     if (cached) {
       result.set(slug, cached)
@@ -147,7 +147,7 @@ export async function fetchBatchForecasts(
   
   // Cache and add to result
   for (const [slug, forecast] of Object.entries(data.forecasts)) {
-    const cacheKey = getCacheKey(slug, model)
+    const cacheKey = getCacheKey(slug, model, elevation)
     setCachedForecast(cacheKey, forecast)
     result.set(slug, forecast)
   }

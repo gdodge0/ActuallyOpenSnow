@@ -46,6 +46,39 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const selectedModel = ref('blend')
 
+// Elevation override state (always stored in meters internally)
+const elevationOverrideMeters = ref<number | undefined>(undefined)
+const showElevationInput = ref(false)
+
+// Initialize elevation from location when it loads
+watch(location, (loc) => {
+  if (loc && elevationOverrideMeters.value === undefined) {
+    elevationOverrideMeters.value = loc.elevation_m
+  }
+}, { immediate: true })
+
+// The effective elevation used for the forecast (in meters)
+const effectiveElevation = computed(() => {
+  return elevationOverrideMeters.value ?? location.value?.elevation_m
+})
+
+// Display value for the input (in user's preferred unit)
+const elevationInputDisplayValue = computed(() => {
+  if (elevationOverrideMeters.value === undefined) return ''
+  const converted = convertElevation(elevationOverrideMeters.value, 'm', settingsStore.elevationUnit)
+  return Math.round(converted ?? 0)
+})
+
+// Get the reciprocal unit for display
+const reciprocalUnit = computed(() => settingsStore.elevationUnit === 'ft' ? 'm' : 'ft')
+
+// Format elevation in the reciprocal unit
+function formatReciprocalElev(meters: number | undefined): string {
+  if (meters === undefined) return '--'
+  const converted = convertElevation(meters, 'm', reciprocalUnit.value)
+  return formatElevation(converted, reciprocalUnit.value)
+}
+
 // Load forecast
 async function loadForecast() {
   if (!location.value) return
@@ -58,7 +91,7 @@ async function loadForecast() {
       location.value.lat,
       location.value.lon,
       selectedModel.value,
-      location.value.elevation_m
+      effectiveElevation.value
     )
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load forecast'
@@ -68,7 +101,37 @@ async function loadForecast() {
   }
 }
 
-watch([locationId, selectedModel], loadForecast, { immediate: true })
+watch([locationId, selectedModel, effectiveElevation], loadForecast, { immediate: true })
+
+// Handle elevation input (input is in user's preferred unit)
+function handleElevationChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const inputValue = parseInt(input.value, 10)
+  
+  if (isNaN(inputValue)) return
+  
+  // Convert from display unit to meters
+  const valueInMeters = Math.round(
+    convertElevation(inputValue, settingsStore.elevationUnit, 'm') ?? 0
+  )
+  
+  // Validate range (0 to 9000m)
+  if (valueInMeters >= 0 && valueInMeters <= 9000) {
+    elevationOverrideMeters.value = valueInMeters
+  }
+}
+
+function clearElevationOverride() {
+  elevationOverrideMeters.value = location.value?.elevation_m
+  showElevationInput.value = false
+}
+
+// Input constraints in display units
+const inputMin = computed(() => 0)
+const inputMax = computed(() => {
+  return Math.round(convertElevation(9000, 'm', settingsStore.elevationUnit) ?? 0)
+})
+const inputStep = computed(() => settingsStore.elevationUnit === 'ft' ? 100 : 50)
 
 onMounted(() => {
   forecastStore.loadModels()
@@ -162,29 +225,99 @@ function handleModelChange(modelId: string) {
     </RouterLink>
     
     <!-- Location Header -->
-    <div v-if="location" class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3">
-          <h1 class="text-3xl md:text-4xl font-display font-bold text-white">
-            {{ location.name }}
-          </h1>
-          <span class="px-2 py-1 rounded-full bg-mountain-700 text-mountain-300 text-xs">
-            Custom
-          </span>
+    <div v-if="location" class="space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 class="text-3xl md:text-4xl font-display font-bold text-white">
+              {{ location.name }}
+            </h1>
+            <span class="px-2 py-1 rounded-full bg-mountain-700 text-mountain-300 text-xs">
+              Custom
+            </span>
+          </div>
+          <p class="text-mountain-400 mt-1">
+            📍 {{ location.lat.toFixed(4) }}°, {{ location.lon.toFixed(4) }}°
+            <template v-if="elevationDisplay">
+              <span class="mx-2">•</span>
+              Elevation: {{ elevationDisplay }}
+            </template>
+          </p>
         </div>
-        <p class="text-mountain-400 mt-1">
-          📍 {{ location.lat.toFixed(4) }}°, {{ location.lon.toFixed(4) }}°
-          <template v-if="elevationDisplay">
-            <span class="mx-2">•</span>
-            Elevation: {{ elevationDisplay }}
-          </template>
-        </p>
+        
+        <ModelSelector 
+          :current-model="selectedModel"
+          @update:model="handleModelChange"
+        />
       </div>
       
-      <ModelSelector 
-        :current-model="selectedModel"
-        @update:model="handleModelChange"
-      />
+      <!-- Elevation Override -->
+      <div class="bg-mountain-900/50 rounded-xl p-4 border border-mountain-800">
+        <div class="flex items-center gap-2 text-sm text-mountain-400 mb-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+              d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+          </svg>
+          <span>Forecast Elevation</span>
+        </div>
+        
+        <div class="flex items-center gap-4">
+          <button
+            v-if="!showElevationInput"
+            @click="showElevationInput = true"
+            class="px-3 py-2 rounded-lg bg-mountain-800 border border-mountain-700 
+                   hover:bg-mountain-700 hover:border-mountain-600 transition-colors
+                   text-white text-sm"
+          >
+            <span v-if="effectiveElevation">
+              {{ formatElevation(convertElevation(effectiveElevation, 'm', settingsStore.elevationUnit), settingsStore.elevationUnit) }}
+            </span>
+            <span v-else class="text-mountain-400">Not set (uses model default)</span>
+            <span class="ml-2 text-mountain-400">✏️</span>
+          </button>
+          
+          <div v-else class="flex items-center gap-3">
+            <input
+              type="number"
+              :value="elevationInputDisplayValue"
+              @change="handleElevationChange"
+              :min="inputMin"
+              :max="inputMax"
+              :step="inputStep"
+              :placeholder="`Elevation in ${settingsStore.elevationUnit}`"
+              class="w-32 px-3 py-2 rounded-lg bg-mountain-800 border border-mountain-600
+                     text-white text-sm focus:border-snow-500 focus:outline-none focus:ring-1 focus:ring-snow-500/50"
+            />
+            <span class="text-sm text-mountain-400">{{ settingsStore.elevationUnit }}</span>
+            <span v-if="effectiveElevation" class="text-xs text-mountain-500">
+              ({{ formatReciprocalElev(effectiveElevation) }})
+            </span>
+            <button
+              @click="showElevationInput = false"
+              class="px-3 py-2 rounded-lg bg-snow-600/20 border border-snow-500 
+                     text-white text-sm hover:bg-snow-600/30 transition-colors"
+            >
+              Done
+            </button>
+            <button
+              v-if="location.elevation_m !== undefined"
+              @click="clearElevationOverride"
+              class="text-sm text-mountain-400 hover:text-white transition-colors"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        
+        <div class="mt-2 text-xs text-mountain-500">
+          <span v-if="effectiveElevation">
+            Showing forecast for {{ formatElevation(convertElevation(effectiveElevation, 'm', settingsStore.elevationUnit), settingsStore.elevationUnit) }}
+          </span>
+          <span v-else>
+            Using weather model's default elevation for this location
+          </span>
+        </div>
+      </div>
     </div>
     
     <!-- Loading -->

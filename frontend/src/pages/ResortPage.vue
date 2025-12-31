@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { useResortsStore } from '@/stores/resorts'
 import { useForecastStore } from '@/stores/forecast'
@@ -10,6 +10,8 @@ import SnowfallCard from '@/components/forecast/SnowfallCard.vue'
 import DailyBreakdown from '@/components/forecast/DailyBreakdown.vue'
 import SnowGraph from '@/components/forecast/SnowGraph.vue'
 import ModelSelector from '@/components/forecast/ModelSelector.vue'
+import ElevationSelector from '@/components/forecast/ElevationSelector.vue'
+import type { ElevationOption } from '@/components/forecast/ElevationSelector.vue'
 import WeatherStats from '@/components/forecast/WeatherStats.vue'
 import { formatModelRunTime } from '@/utils/forecast'
 import { convertPrecipitation, convertElevation, formatElevation } from '@/utils/units'
@@ -22,6 +24,29 @@ const settingsStore = useSettingsStore()
 const slug = computed(() => route.params.slug as string)
 const resort = computed(() => resortsStore.getResortBySlug(slug.value))
 
+// Elevation selection state
+const selectedElevation = ref<ElevationOption>('peak')
+const customElevationM = ref<number | undefined>(undefined)
+
+// Get the elevation value to pass to the API
+const elevationValue = computed(() => {
+  if (!resort.value) return 'summit'
+  
+  switch (selectedElevation.value) {
+    case 'peak':
+      return 'summit'
+    case 'mid':
+      // Calculate mid-mountain and pass as meters
+      return Math.round((resort.value.base_elevation_m + resort.value.summit_elevation_m) / 2)
+    case 'base':
+      return 'base'
+    case 'custom':
+      return customElevationM.value ?? resort.value.summit_elevation_m
+    default:
+      return 'summit'
+  }
+})
+
 // Update page title when resort loads
 watch(resort, (r) => {
   if (r) {
@@ -29,13 +54,18 @@ watch(resort, (r) => {
   }
 }, { immediate: true })
 
-// Load forecast when slug or model changes
+// Load forecast when slug, model, or elevation changes
 async function loadForecast() {
   if (!slug.value) return
-  await forecastStore.loadForecast(slug.value, forecastStore.selectedModel)
+  await forecastStore.loadForecast(slug.value, forecastStore.selectedModel, elevationValue.value)
 }
 
-watch([slug, () => forecastStore.selectedModel], loadForecast, { immediate: true })
+watch([slug, () => forecastStore.selectedModel, elevationValue], loadForecast, { immediate: true })
+
+// Handle elevation change from selector
+function handleElevationChange(elevationM: number) {
+  // The watch on elevationValue will trigger the forecast reload
+}
 
 onMounted(() => {
   if (resortsStore.resorts.length === 0) {
@@ -59,6 +89,14 @@ const summitElevation = computed(() => {
   if (!resort.value) return '--'
   return formatElevation(
     convertElevation(resort.value.summit_elevation_m, 'm', settingsStore.elevationUnit),
+    settingsStore.elevationUnit
+  )
+})
+
+const baseElevation = computed(() => {
+  if (!resort.value) return '--'
+  return formatElevation(
+    convertElevation(resort.value.base_elevation_m, 'm', settingsStore.elevationUnit),
     settingsStore.elevationUnit
   )
 })
@@ -87,38 +125,51 @@ function handleModelChange(modelId: string) {
     </RouterLink>
     
     <!-- Resort Header -->
-    <div v-if="resort" class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3">
-          <h1 class="text-3xl md:text-4xl font-display font-bold text-white">
-            {{ resort.name }}
-          </h1>
-          <button
-            @click="toggleFavorite"
-            class="p-2 rounded-lg hover:bg-mountain-800 transition-colors"
-            :class="isFavorite ? 'text-yellow-400' : 'text-mountain-500 hover:text-yellow-400'"
-          >
-            <svg 
-              class="w-6 h-6" 
-              :fill="isFavorite ? 'currentColor' : 'none'" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
+    <div v-if="resort" class="space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 class="text-3xl md:text-4xl font-display font-bold text-white">
+              {{ resort.name }}
+            </h1>
+            <button
+              @click="toggleFavorite"
+              class="p-2 rounded-lg hover:bg-mountain-800 transition-colors"
+              :class="isFavorite ? 'text-yellow-400' : 'text-mountain-500 hover:text-yellow-400'"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-            </svg>
-          </button>
+              <svg 
+                class="w-6 h-6" 
+                :fill="isFavorite ? 'currentColor' : 'none'" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+              </svg>
+            </button>
+          </div>
+          <p class="text-mountain-400 mt-1">
+            📍 {{ resort.lat.toFixed(4) }}°, {{ resort.lon.toFixed(4) }}° 
+            <span class="mx-2">•</span>
+            Base: {{ baseElevation }} | Summit: {{ summitElevation }}
+          </p>
         </div>
-        <p class="text-mountain-400 mt-1">
-          📍 {{ resort.lat.toFixed(4) }}°, {{ resort.lon.toFixed(4) }}° 
-          <span class="mx-2">•</span>
-          Summit: {{ summitElevation }}
-        </p>
+        
+        <ModelSelector 
+          :current-model="forecastStore.selectedModel"
+          @update:model="handleModelChange"
+        />
       </div>
       
-      <ModelSelector 
-        :current-model="forecastStore.selectedModel"
-        @update:model="handleModelChange"
-      />
+      <!-- Elevation Selector -->
+      <div class="bg-mountain-900/50 rounded-xl p-4 border border-mountain-800">
+        <ElevationSelector
+          v-model="selectedElevation"
+          v-model:custom-elevation-m="customElevationM"
+          :base-elevation-m="resort.base_elevation_m"
+          :summit-elevation-m="resort.summit_elevation_m"
+          @change="handleElevationChange"
+        />
+      </div>
     </div>
     
     <!-- Loading -->
