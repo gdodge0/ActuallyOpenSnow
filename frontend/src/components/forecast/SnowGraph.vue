@@ -65,10 +65,23 @@ const displayHours = computed(() => {
   return Math.min(selectedHours.value, available)
 })
 
+// Get snowfall data based on current mode
+const snowfallData = computed(() => {
+  if (settingsStore.snowfallMode === 'enhanced' && props.forecast.enhanced_hourly_data?.enhanced_snowfall) {
+    return {
+      data: props.forecast.enhanced_hourly_data.enhanced_snowfall,
+      unit: props.forecast.enhanced_hourly_units?.enhanced_snowfall ?? 'cm'
+    }
+  }
+  return {
+    data: props.forecast.hourly_data.snowfall ?? [],
+    unit: props.forecast.hourly_units.snowfall ?? 'cm'
+  }
+})
+
 // Computed total snow for selected period
 const periodTotal = computed(() => {
-  const snowfall = props.forecast.hourly_data.snowfall ?? []
-  const fromUnit = props.forecast.hourly_units.snowfall ?? 'cm'
+  const { data: snowfall, unit: fromUnit } = snowfallData.value
   
   let total = 0
   for (let i = 0; i < displayHours.value; i++) {
@@ -89,9 +102,8 @@ const labelInterval = computed(() => {
 })
 
 const chartData = computed(() => {
-  const snowfall = props.forecast.hourly_data.snowfall ?? []
+  const { data: snowfall, unit: fromUnit } = snowfallData.value
   const times = props.forecast.times_utc
-  const fromUnit = props.forecast.hourly_units.snowfall ?? 'cm'
   
   const hourlySnow: number[] = []
   const accumulated: number[] = []
@@ -138,15 +150,22 @@ const chartData = computed(() => {
     }
   }
   
+  // Label changes based on mode
+  const modeLabel = settingsStore.snowfallMode === 'enhanced' ? 'Enhanced' : 'Conservative'
+  
   return {
     labels,
     datasets: [
       {
         type: 'bar' as const,
-        label: 'Hourly Snow',
+        label: `Hourly Snow (${modeLabel})`,
         data: hourlySnow,
-        backgroundColor: 'rgba(56, 189, 248, 0.6)',
-        borderColor: 'rgba(56, 189, 248, 1)',
+        backgroundColor: settingsStore.snowfallMode === 'enhanced' 
+          ? 'rgba(56, 189, 248, 0.6)' 
+          : 'rgba(148, 163, 184, 0.6)',
+        borderColor: settingsStore.snowfallMode === 'enhanced'
+          ? 'rgba(56, 189, 248, 1)'
+          : 'rgba(148, 163, 184, 1)',
         borderWidth: 1,
         borderRadius: 2,
         yAxisID: 'y',
@@ -326,7 +345,7 @@ function formatTotal(value: number): string {
         type="bar" 
         :data="chartData" 
         :options="chartOptions"
-        :key="selectedHours"
+        :key="`${selectedHours}-${settingsStore.snowfallMode}`"
       />
     </div>
   </div>
