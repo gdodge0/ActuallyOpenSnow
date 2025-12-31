@@ -139,18 +139,24 @@ function handleModelChange(modelId: string) {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <SnowfallCard
           :total-snow-cm="forecastStore.snowfall24h"
+          :enhanced-snow-cm="forecastStore.enhancedSnowfall24h"
+          :rain-mm="forecastStore.rain24h"
           :snow-unit="forecastStore.currentForecast.hourly_units.snowfall"
           period="Next 24 Hours"
           :model-id="forecastStore.selectedModel"
         />
         <SnowfallCard
           :total-snow-cm="forecastStore.snowfall72h"
+          :enhanced-snow-cm="forecastStore.enhancedSnowfall72h"
+          :rain-mm="forecastStore.rain72h"
           :snow-unit="forecastStore.currentForecast.hourly_units.snowfall"
           period="Next 72 Hours"
           :model-id="forecastStore.selectedModel"
         />
         <SnowfallCard
           :total-snow-cm="forecastStore.totalSnowfall"
+          :enhanced-snow-cm="forecastStore.totalEnhancedSnowfall"
+          :rain-mm="forecastStore.totalRain"
           :snow-unit="forecastStore.currentForecast.hourly_units.snowfall"
           :period="`${forecastStore.forecastDays}-Day Total`"
           :model-id="forecastStore.selectedModel"

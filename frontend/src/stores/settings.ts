@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import type { TemperatureUnit, PrecipitationUnit, WindSpeedUnit, ElevationUnit } from '@/types'
+import type { TemperatureUnit, PrecipitationUnit, WindSpeedUnit, ElevationUnit, SnowfallMode } from '@/types'
 
 const STORAGE_KEY = 'actuallyopensnow-settings'
 
@@ -14,6 +14,8 @@ interface SettingsState {
   windSpeedUnit: WindSpeedUnit
   elevationUnit: ElevationUnit
   theme: 'dark' | 'light'
+  snowfallMode: SnowfallMode
+  showBothSnowfallModes: boolean
 }
 
 const defaultSettings: SettingsState = {
@@ -22,6 +24,8 @@ const defaultSettings: SettingsState = {
   windSpeedUnit: 'mph',
   elevationUnit: 'ft',
   theme: 'dark',
+  snowfallMode: 'enhanced',  // Default to enhanced for more accurate forecasts
+  showBothSnowfallModes: true,  // Show comparison by default
 }
 
 function loadSettings(): SettingsState {
@@ -47,6 +51,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const windSpeedUnit = ref<WindSpeedUnit>(initial.windSpeedUnit)
   const elevationUnit = ref<ElevationUnit>(initial.elevationUnit)
   const theme = ref<'dark' | 'light'>(initial.theme)
+  const snowfallMode = ref<SnowfallMode>(initial.snowfallMode)
+  const showBothSnowfallModes = ref<boolean>(initial.showBothSnowfallModes)
   
   // Persist settings on change
   function saveSettings() {
@@ -57,12 +63,14 @@ export const useSettingsStore = defineStore('settings', () => {
       windSpeedUnit: windSpeedUnit.value,
       elevationUnit: elevationUnit.value,
       theme: theme.value,
+      snowfallMode: snowfallMode.value,
+      showBothSnowfallModes: showBothSnowfallModes.value,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   }
   
   // Watch all settings for changes
-  watch([temperatureUnit, precipitationUnit, windSpeedUnit, elevationUnit, theme], saveSettings)
+  watch([temperatureUnit, precipitationUnit, windSpeedUnit, elevationUnit, theme, snowfallMode, showBothSnowfallModes], saveSettings)
   
   // Toggle between imperial and metric
   function setImperial() {
@@ -97,6 +105,8 @@ export const useSettingsStore = defineStore('settings', () => {
     windSpeedUnit,
     elevationUnit,
     theme,
+    snowfallMode,
+    showBothSnowfallModes,
     setImperial,
     setMetric,
     toggleTheme,

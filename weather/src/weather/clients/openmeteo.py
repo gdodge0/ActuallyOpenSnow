@@ -196,6 +196,7 @@ class MeteoClient(BaseClient):
             requested_lon=lon,
             model_id=model_id,
             elevation_override=elevation,
+            hourly_variables=self.hourly_variables,
         )
 
     def _build_params(

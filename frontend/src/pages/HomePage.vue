@@ -7,7 +7,7 @@ import { useCustomLocationsStore } from '@/stores/customLocations'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { Resort, Forecast } from '@/types'
 import { fetchBatchForecasts, fetchForecast } from '@/utils/api'
-import { getTotalSnowfall } from '@/utils/forecast'
+import { getTotalSnowfall, getTotalEnhancedSnowfall } from '@/utils/forecast'
 import { convertPrecipitation, formatSnowfall } from '@/utils/units'
 
 const resortsStore = useResortsStore()
@@ -71,24 +71,46 @@ const featuredResorts = computed(() => {
     .filter((r): r is Resort => r !== undefined)
 })
 
+// Computed snow totals - reactive to settings changes
+const snowTotals = computed(() => {
+  const totals = new Map<string, string>()
+  
+  for (const [slug, forecast] of featuredForecasts.value) {
+    // Use enhanced or conservative based on settings
+    const totalCm = settingsStore.snowfallMode === 'enhanced' 
+      ? getTotalEnhancedSnowfall(forecast)
+      : getTotalSnowfall(forecast)
+    const converted = convertPrecipitation(totalCm, 'cm', settingsStore.precipitationUnit)
+    totals.set(slug, formatSnowfall(converted ?? 0, settingsStore.precipitationUnit))
+  }
+  
+  return totals
+})
+
 // Get snow total for a resort
 function getSnowTotal(slug: string): string {
-  const forecast = featuredForecasts.value.get(slug)
-  if (!forecast) return '--'
-  
-  const totalCm = getTotalSnowfall(forecast)
-  const converted = convertPrecipitation(totalCm, forecast.hourly_units.snowfall || 'cm', settingsStore.precipitationUnit)
-  return formatSnowfall(converted ?? 0, settingsStore.precipitationUnit)
+  return snowTotals.value.get(slug) ?? '--'
 }
+
+// Computed powder status - reactive to settings changes
+const powderResorts = computed(() => {
+  const powder = new Set<string>()
+  
+  for (const [slug, forecast] of featuredForecasts.value) {
+    // Always use enhanced for powder detection (more accurate)
+    const totalCm = getTotalEnhancedSnowfall(forecast)
+    const inches = convertPrecipitation(totalCm, 'cm', 'in')
+    if ((inches ?? 0) >= 6) {
+      powder.add(slug)
+    }
+  }
+  
+  return powder
+})
 
 // Check if resort has powder (> 6" expected)
 function hasPowder(slug: string): boolean {
-  const forecast = featuredForecasts.value.get(slug)
-  if (!forecast) return false
-  
-  const totalCm = getTotalSnowfall(forecast)
-  const inches = convertPrecipitation(totalCm, forecast.hourly_units.snowfall || 'cm', 'in')
-  return (inches ?? 0) >= 6
+  return powderResorts.value.has(slug)
 }
 
 // Type for powder alert location (can be resort or custom location)
@@ -101,8 +123,19 @@ interface PowderAlertLocation {
   unitLabel: string
 }
 
+// Helper to get snowfall based on current mode setting
+function getSnowfallForMode(forecast: Forecast): number {
+  return settingsStore.snowfallMode === 'enhanced'
+    ? getTotalEnhancedSnowfall(forecast)
+    : getTotalSnowfall(forecast)
+}
+
 // Get the location with most snow (from featured, favorites, AND custom locations)
+// Respects the snowfall mode setting (enhanced vs conservative)
 const topSnowLocation = computed((): PowderAlertLocation | null => {
+  // Access snowfallMode to ensure reactivity
+  const mode = settingsStore.snowfallMode
+  
   let maxSnowCm = 0
   let topId = ''
   let topForecast: Forecast | null = null
@@ -110,7 +143,9 @@ const topSnowLocation = computed((): PowderAlertLocation | null => {
   
   // Check featured resorts
   for (const [slug, forecast] of featuredForecasts.value) {
-    const totalCm = getTotalSnowfall(forecast)
+    const totalCm = mode === 'enhanced' 
+      ? getTotalEnhancedSnowfall(forecast) 
+      : getTotalSnowfall(forecast)
     if (totalCm > maxSnowCm) {
       maxSnowCm = totalCm
       topId = slug
@@ -121,7 +156,9 @@ const topSnowLocation = computed((): PowderAlertLocation | null => {
   
   // Check favorite resorts
   for (const [slug, forecast] of favoriteForecasts.value) {
-    const totalCm = getTotalSnowfall(forecast)
+    const totalCm = mode === 'enhanced' 
+      ? getTotalEnhancedSnowfall(forecast) 
+      : getTotalSnowfall(forecast)
     if (totalCm > maxSnowCm) {
       maxSnowCm = totalCm
       topId = slug
@@ -132,7 +169,9 @@ const topSnowLocation = computed((): PowderAlertLocation | null => {
   
   // Check custom locations
   for (const [id, forecast] of customLocationForecasts.value) {
-    const totalCm = getTotalSnowfall(forecast)
+    const totalCm = mode === 'enhanced' 
+      ? getTotalEnhancedSnowfall(forecast) 
+      : getTotalSnowfall(forecast)
     if (totalCm > maxSnowCm) {
       maxSnowCm = totalCm
       topId = id
@@ -147,8 +186,7 @@ const topSnowLocation = computed((): PowderAlertLocation | null => {
   const inches = convertPrecipitation(maxSnowCm, 'cm', 'in') ?? 0
   
   // Convert to user's preferred unit for display
-  const snowUnit = topForecast.hourly_units.snowfall || 'cm'
-  const displayValue = convertPrecipitation(maxSnowCm, snowUnit, settingsStore.precipitationUnit) ?? 0
+  const displayValue = convertPrecipitation(maxSnowCm, 'cm', settingsStore.precipitationUnit) ?? 0
   const unitLabel = settingsStore.precipitationUnit === 'in' ? '"' : ' cm'
   
   // Get name and link based on type

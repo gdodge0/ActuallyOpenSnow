@@ -10,6 +10,11 @@ from weather.domain.errors import (
     ModelError,
     RangeError,
 )
+from weather.utils.snow import (
+    get_snow_ratio,
+    calculate_snowfall_from_precip,
+    calculate_hourly_snowfall,
+)
 
 __version__ = "0.1.0"
 
@@ -26,5 +31,9 @@ __all__ = [
     "UnitError",
     "ModelError",
     "RangeError",
+    # Snow utilities
+    "get_snow_ratio",
+    "calculate_snowfall_from_precip",
+    "calculate_hourly_snowfall",
 ]
 

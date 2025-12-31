@@ -158,7 +158,7 @@ def set_cached_blend(cache_key: str, response: ForecastResponse) -> None:
 
 def forecast_to_response(forecast: Forecast) -> ForecastResponse:
     """Convert a Forecast to a ForecastResponse."""
-    data = forecast.to_dict()
+    data = forecast.to_dict(include_enhanced=True)
     return ForecastResponse(
         lat=data["lat"],
         lon=data["lon"],
@@ -170,6 +170,8 @@ def forecast_to_response(forecast: Forecast) -> ForecastResponse:
         times_utc=data["times_utc"],
         hourly_data=data["hourly_data"],
         hourly_units=data["hourly_units"],
+        enhanced_hourly_data=data.get("enhanced_hourly_data"),
+        enhanced_hourly_units=data.get("enhanced_hourly_units"),
     )
 
 
@@ -233,6 +235,33 @@ def create_blend_forecast(
         
         blended_hourly_data[var] = blended_values
     
+    # Also blend enhanced hourly data if available
+    blended_enhanced_data: dict[str, list[float]] = {}
+    enhanced_vars = ["enhanced_snowfall", "rain"]
+    
+    for var in enhanced_vars:
+        blended_values_enhanced: list[float] = []
+        
+        for hour_idx in range(min_hours):
+            weighted_sum = 0.0
+            total_weight = 0.0
+            
+            for model_id, forecast_data in forecasts.items():
+                enhanced_data = forecast_data.get("enhanced_hourly_data", {})
+                if var in enhanced_data and hour_idx < len(enhanced_data[var]):
+                    val = enhanced_data[var][hour_idx]
+                    if val is not None:
+                        weight = model_weights.get(model_id, 1.0)
+                        weighted_sum += val * weight
+                        total_weight += weight
+            
+            if total_weight > 0:
+                blended_values_enhanced.append(weighted_sum / total_weight)
+            else:
+                blended_values_enhanced.append(0.0)
+        
+        blended_enhanced_data[var] = blended_values_enhanced
+    
     # Use times from first forecast, truncated to min_hours
     blended_times = first_data["times_utc"][:min_hours]
     
@@ -250,6 +279,8 @@ def create_blend_forecast(
         times_utc=blended_times,
         hourly_data=blended_hourly_data,
         hourly_units=first_data["hourly_units"],
+        enhanced_hourly_data=blended_enhanced_data,
+        enhanced_hourly_units=first_data.get("enhanced_hourly_units", {"enhanced_snowfall": "cm", "rain": "mm"}),
     )
 
 

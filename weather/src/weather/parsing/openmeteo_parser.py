@@ -6,8 +6,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from weather.domain.forecast import Forecast
+from weather.config.defaults import DEFAULT_HOURLY_VARIABLES
 from weather.domain.errors import ApiError
+from weather.domain.forecast import Forecast
+from weather.units.normalize import get_unit_category
 from weather.units.openmeteo_units import decode_openmeteo_unit, get_default_unit
 from weather.utils.time import infer_model_run_time
 
@@ -20,6 +22,7 @@ def parse_openmeteo_response(
     requested_lon: float,
     model_id: str,
     elevation_override: float | None = None,
+    hourly_variables: tuple[str, ...] | list[str] | None = None,
 ) -> Forecast:
     """Parse an Open-Meteo API response into a Forecast object.
 
@@ -33,6 +36,9 @@ def parse_openmeteo_response(
         requested_lon: The longitude that was requested.
         model_id: The model ID that was used.
         elevation_override: Optional elevation override value.
+        hourly_variables: Ordered list/tuple of hourly variables requested.
+            Used to align FlatBuffers variables with their names. Defaults to
+            the standard hourly variable set if not provided.
 
     Returns:
         A Forecast object with parsed data.
@@ -49,6 +55,7 @@ def parse_openmeteo_response(
                 requested_lon,
                 model_id,
                 elevation_override,
+                hourly_variables,
             )
 
         # Handle raw JSON dict response
@@ -59,6 +66,7 @@ def parse_openmeteo_response(
                 requested_lon,
                 model_id,
                 elevation_override,
+                hourly_variables,
             )
 
         raise ApiError(f"Unknown response type: {type(response)}")
@@ -76,6 +84,7 @@ def _parse_flatbuffers_response(
     requested_lon: float,
     model_id: str,
     elevation_override: float | None,
+    hourly_variables: tuple[str, ...] | list[str] | None,
 ) -> Forecast:
     """Parse a response from the openmeteo-requests library."""
     # Extract coordinates from response
@@ -109,25 +118,17 @@ def _parse_flatbuffers_response(
     hourly_data: dict[str, tuple[float | None, ...]] = {}
     hourly_units: dict[str, str] = {}
 
-    # Map of variable index to name (order matches request)
-    variable_names = [
-        "temperature_2m",
-        "wind_speed_10m",
-        "wind_gusts_10m",
-        "snowfall",
-        "precipitation",
-        "freezing_level_height",
-    ]
+    # Map of variable index to name (order matches requested hourly variables)
+    variable_names = list(hourly_variables or DEFAULT_HOURLY_VARIABLES)
 
     # Expected unit categories for each variable (for validation)
-    expected_categories: dict[str, str] = {
-        "temperature_2m": "temperature",
-        "wind_speed_10m": "speed",
-        "wind_gusts_10m": "speed",
-        "snowfall": "length",
-        "precipitation": "length",
-        "freezing_level_height": "length",
-    }
+    expected_categories: dict[str, str | None] = {}
+    for var_name in variable_names:
+        default_unit = get_default_unit(var_name)
+        try:
+            expected_categories[var_name] = get_unit_category(default_unit)
+        except Exception:
+            expected_categories[var_name] = None
 
     for i, var_name in enumerate(variable_names):
         try:
@@ -149,7 +150,6 @@ def _parse_flatbuffers_response(
                     decoded_unit = decode_openmeteo_unit(unit_enum)
                     
                     # Validate the unit category matches what we expect
-                    from weather.units.normalize import get_unit_category
                     expected_cat = expected_categories.get(var_name)
                     actual_cat = get_unit_category(decoded_unit)
                     
@@ -197,6 +197,7 @@ def _parse_json_response(
     requested_lon: float,
     model_id: str,
     elevation_override: float | None,
+    hourly_variables: tuple[str, ...] | list[str] | None,
 ) -> Forecast:
     """Parse a raw JSON API response."""
     # Check for error
@@ -238,14 +239,7 @@ def _parse_json_response(
     hourly_data: dict[str, tuple[float | None, ...]] = {}
     hourly_units: dict[str, str] = {}
 
-    variable_names = [
-        "temperature_2m",
-        "wind_speed_10m",
-        "wind_gusts_10m",
-        "snowfall",
-        "precipitation",
-        "freezing_level_height",
-    ]
+    variable_names = list(hourly_variables or DEFAULT_HOURLY_VARIABLES)
 
     for var_name in variable_names:
         if var_name in hourly:

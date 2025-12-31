@@ -6,7 +6,15 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Forecast, ModelInfo, ComparisonResponse } from '@/types'
 import { fetchResortForecast, fetchResortComparison, fetchModels } from '@/utils/api'
-import { getDailySummaries, getTotalSnowfall, getSnowfallNextHours } from '@/utils/forecast'
+import { 
+  getDailySummaries, 
+  getTotalSnowfall, 
+  getTotalEnhancedSnowfall,
+  getTotalRain,
+  getSnowfallNextHours,
+  getEnhancedSnowfallNextHours,
+  getRainNextHours,
+} from '@/utils/forecast'
 
 interface ForecastCache {
   forecast: Forecast
@@ -33,22 +41,58 @@ export const useForecastStore = defineStore('forecast', () => {
     return getDailySummaries(currentForecast.value)
   })
   
-  // Computed: total snowfall
+  // Computed: total snowfall (conservative)
   const totalSnowfall = computed(() => {
     if (!currentForecast.value) return 0
     return getTotalSnowfall(currentForecast.value)
   })
   
-  // Computed: snowfall next 24h
+  // Computed: total enhanced snowfall (temperature-adjusted)
+  const totalEnhancedSnowfall = computed(() => {
+    if (!currentForecast.value) return 0
+    return getTotalEnhancedSnowfall(currentForecast.value)
+  })
+  
+  // Computed: total rain
+  const totalRain = computed(() => {
+    if (!currentForecast.value) return 0
+    return getTotalRain(currentForecast.value)
+  })
+  
+  // Computed: snowfall next 24h (conservative)
   const snowfall24h = computed(() => {
     if (!currentForecast.value) return 0
     return getSnowfallNextHours(currentForecast.value, 24)
   })
   
-  // Computed: snowfall next 72h
+  // Computed: enhanced snowfall next 24h
+  const enhancedSnowfall24h = computed(() => {
+    if (!currentForecast.value) return 0
+    return getEnhancedSnowfallNextHours(currentForecast.value, 24)
+  })
+  
+  // Computed: rain next 24h
+  const rain24h = computed(() => {
+    if (!currentForecast.value) return 0
+    return getRainNextHours(currentForecast.value, 24)
+  })
+  
+  // Computed: snowfall next 72h (conservative)
   const snowfall72h = computed(() => {
     if (!currentForecast.value) return 0
     return getSnowfallNextHours(currentForecast.value, 72)
+  })
+  
+  // Computed: enhanced snowfall next 72h
+  const enhancedSnowfall72h = computed(() => {
+    if (!currentForecast.value) return 0
+    return getEnhancedSnowfallNextHours(currentForecast.value, 72)
+  })
+  
+  // Computed: rain next 72h
+  const rain72h = computed(() => {
+    if (!currentForecast.value) return 0
+    return getRainNextHours(currentForecast.value, 72)
   })
   
   // Computed: forecast days
@@ -163,8 +207,14 @@ export const useForecastStore = defineStore('forecast', () => {
     // Computed
     dailySummaries,
     totalSnowfall,
+    totalEnhancedSnowfall,
+    totalRain,
     snowfall24h,
+    enhancedSnowfall24h,
+    rain24h,
     snowfall72h,
+    enhancedSnowfall72h,
+    rain72h,
     forecastDays,
     modelRunTime,
     

@@ -11,7 +11,16 @@ import DailyBreakdown from '@/components/forecast/DailyBreakdown.vue'
 import SnowGraph from '@/components/forecast/SnowGraph.vue'
 import ModelSelector from '@/components/forecast/ModelSelector.vue'
 import WeatherStats from '@/components/forecast/WeatherStats.vue'
-import { formatModelRunTime, getDailySummaries, getTotalSnowfall, getSnowfallNextHours } from '@/utils/forecast'
+import { 
+  formatModelRunTime, 
+  getDailySummaries, 
+  getTotalSnowfall, 
+  getTotalEnhancedSnowfall,
+  getTotalRain,
+  getSnowfallNextHours,
+  getEnhancedSnowfallNextHours,
+  getRainNextHours,
+} from '@/utils/forecast'
 import { convertElevation, formatElevation } from '@/utils/units'
 import { fetchForecast } from '@/utils/api'
 import type { Forecast } from '@/types'
@@ -88,14 +97,44 @@ const totalSnowfall = computed(() => {
   return getTotalSnowfall(forecast.value)
 })
 
+const totalEnhancedSnowfall = computed(() => {
+  if (!forecast.value) return 0
+  return getTotalEnhancedSnowfall(forecast.value)
+})
+
+const totalRain = computed(() => {
+  if (!forecast.value) return 0
+  return getTotalRain(forecast.value)
+})
+
 const snowfall24h = computed(() => {
   if (!forecast.value) return 0
   return getSnowfallNextHours(forecast.value, 24)
 })
 
+const enhancedSnowfall24h = computed(() => {
+  if (!forecast.value) return 0
+  return getEnhancedSnowfallNextHours(forecast.value, 24)
+})
+
+const rain24h = computed(() => {
+  if (!forecast.value) return 0
+  return getRainNextHours(forecast.value, 24)
+})
+
 const snowfall72h = computed(() => {
   if (!forecast.value) return 0
   return getSnowfallNextHours(forecast.value, 72)
+})
+
+const enhancedSnowfall72h = computed(() => {
+  if (!forecast.value) return 0
+  return getEnhancedSnowfallNextHours(forecast.value, 72)
+})
+
+const rain72h = computed(() => {
+  if (!forecast.value) return 0
+  return getRainNextHours(forecast.value, 72)
 })
 
 const forecastDays = computed(() => {
@@ -166,18 +205,24 @@ function handleModelChange(modelId: string) {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <SnowfallCard
           :total-snow-cm="snowfall24h"
+          :enhanced-snow-cm="enhancedSnowfall24h"
+          :rain-mm="rain24h"
           :snow-unit="forecast.hourly_units.snowfall"
           period="Next 24 Hours"
           :model-id="selectedModel"
         />
         <SnowfallCard
           :total-snow-cm="snowfall72h"
+          :enhanced-snow-cm="enhancedSnowfall72h"
+          :rain-mm="rain72h"
           :snow-unit="forecast.hourly_units.snowfall"
           period="Next 72 Hours"
           :model-id="selectedModel"
         />
         <SnowfallCard
           :total-snow-cm="totalSnowfall"
+          :enhanced-snow-cm="totalEnhancedSnowfall"
+          :rain-mm="totalRain"
           :snow-unit="forecast.hourly_units.snowfall"
           :period="`${forecastDays}-Day Total`"
           :model-id="selectedModel"

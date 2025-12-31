@@ -36,6 +36,15 @@ export interface Forecast {
   times_utc: string[]
   hourly_data: Record<string, (number | null)[]>
   hourly_units: Record<string, string>
+  // Enhanced snowfall data (calculated from precipitation + temperature)
+  enhanced_hourly_data?: {
+    enhanced_snowfall: number[]
+    rain: number[]
+  }
+  enhanced_hourly_units?: {
+    enhanced_snowfall: string
+    rain: string
+  }
 }
 
 // Multi-model comparison response
@@ -52,6 +61,11 @@ export type PrecipitationUnit = 'cm' | 'in'
 export type WindSpeedUnit = 'kmh' | 'mph' | 'ms'
 export type ElevationUnit = 'm' | 'ft'
 
+// Snowfall calculation mode
+// - 'conservative': Use raw model snowfall (typically 10:1 ratio)
+// - 'enhanced': Use temperature-adjusted ratios (more accurate for cold powder)
+export type SnowfallMode = 'conservative' | 'enhanced'
+
 export interface UnitPreferences {
   temperature: TemperatureUnit
   precipitation: PrecipitationUnit
@@ -66,8 +80,11 @@ export interface DailySummary {
   dayName: string
   highTemp: number | null
   lowTemp: number | null
-  snowfall: number
-  precipitation: number
+  snowfall: number              // Conservative (raw model) snowfall
+  enhancedSnowfall: number      // Enhanced (temperature-adjusted) snowfall
+  rain: number                  // Liquid precipitation (rain)
+  precipitation: number         // Total precipitation (water equivalent)
+  avgSnowRatio: number | null   // Average snow-to-liquid ratio used
   maxWind: number | null
   maxGusts: number | null
   avgFreezingLevel: number | null

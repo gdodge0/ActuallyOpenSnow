@@ -43,6 +43,9 @@ class ForecastResponse(BaseModel):
     times_utc: list[str]
     hourly_data: dict[str, list[Optional[float]]]
     hourly_units: dict[str, str]
+    # Enhanced snowfall data (calculated from precipitation + temperature)
+    enhanced_hourly_data: Optional[dict[str, list[float]]] = None
+    enhanced_hourly_units: Optional[dict[str, str]] = None
 
 
 class ComparisonResponse(BaseModel):

@@ -4,7 +4,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { convertPrecipitation } from '@/utils/units'
 
 const props = defineProps<{
-  totalSnowCm: number
+  totalSnowCm: number             // Conservative (raw model) snowfall in cm
+  enhancedSnowCm?: number         // Enhanced (temperature-adjusted) snowfall in cm
+  rainMm?: number                 // Rain (liquid precipitation) in mm
   snowUnit?: string
   period?: string
   modelId?: string
@@ -13,9 +15,17 @@ const props = defineProps<{
 
 const settingsStore = useSettingsStore()
 
+// Determine which snowfall value to use based on settings
+const activeSnowfall = computed(() => {
+  if (settingsStore.snowfallMode === 'enhanced' && props.enhancedSnowCm !== undefined) {
+    return props.enhancedSnowCm
+  }
+  return props.totalSnowCm
+})
+
 const displayValue = computed(() => {
   const fromUnit = props.snowUnit || 'cm'
-  const converted = convertPrecipitation(props.totalSnowCm, fromUnit, settingsStore.precipitationUnit)
+  const converted = convertPrecipitation(activeSnowfall.value, fromUnit, settingsStore.precipitationUnit)
   
   if (converted === null) return '--'
   if (converted < 0.1) return 'trace'
@@ -24,14 +34,48 @@ const displayValue = computed(() => {
   return Math.round(converted).toString()
 })
 
+// For comparison mode: show both values
+const conservativeDisplay = computed(() => {
+  const converted = convertPrecipitation(props.totalSnowCm, 'cm', settingsStore.precipitationUnit)
+  if (converted === null) return '--'
+  if (converted < 0.1) return 'trace'
+  return Math.round(converted).toString()
+})
+
+const enhancedDisplay = computed(() => {
+  if (props.enhancedSnowCm === undefined) return conservativeDisplay.value
+  const converted = convertPrecipitation(props.enhancedSnowCm, 'cm', settingsStore.precipitationUnit)
+  if (converted === null) return '--'
+  if (converted < 0.1) return 'trace'
+  return Math.round(converted).toString()
+})
+
+// Rain display (convert from mm)
+const rainDisplay = computed(() => {
+  if (!props.rainMm || props.rainMm < 0.1) return null
+  const converted = convertPrecipitation(props.rainMm, 'mm', settingsStore.precipitationUnit)
+  if (converted === null || converted < 0.1) return null
+  return converted < 1 ? converted.toFixed(1) : Math.round(converted).toString()
+})
+
 const unitLabel = computed(() => {
   return settingsStore.precipitationUnit === 'in' ? 'inches' : 'cm'
 })
 
 const isPowderDay = computed(() => {
-  // Powder alert if > 6 inches (15 cm) expected
-  const inInches = convertPrecipitation(props.totalSnowCm, props.snowUnit || 'cm', 'in') ?? 0
+  // Powder alert if > 6 inches (15 cm) expected - use enhanced if available
+  const snowCm = props.enhancedSnowCm ?? props.totalSnowCm
+  const inInches = convertPrecipitation(snowCm, 'cm', 'in') ?? 0
   return inInches >= 6
+})
+
+// Show comparison when enabled and values differ
+const showComparison = computed(() => {
+  if (!settingsStore.showBothSnowfallModes) return false
+  if (props.enhancedSnowCm === undefined) return false
+  // Show if there's a meaningful difference (>10% or >1cm)
+  const diff = Math.abs(props.enhancedSnowCm - props.totalSnowCm)
+  return diff > 1 || diff > props.totalSnowCm * 0.1
 })
 </script>
 
@@ -66,6 +110,24 @@ const isPowderDay = computed(() => {
       <div class="flex items-baseline gap-2 mb-2">
         <span class="stat-number">{{ displayValue }}</span>
         <span class="stat-unit">{{ unitLabel }}</span>
+      </div>
+      
+      <!-- Comparison display when enabled -->
+      <div v-if="showComparison" class="flex items-center gap-3 mb-3 text-sm">
+        <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-mountain-700/50">
+          <span class="text-mountain-400">Conservative:</span>
+          <span class="text-mountain-200 font-medium">{{ conservativeDisplay }}</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-snow-500/20">
+          <span class="text-snow-400">Enhanced:</span>
+          <span class="text-snow-200 font-medium">{{ enhancedDisplay }}</span>
+        </div>
+      </div>
+      
+      <!-- Rain indicator -->
+      <div v-if="rainDisplay" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-sm font-medium mb-3 mr-2">
+        <span>🌧️</span>
+        <span>{{ rainDisplay }} {{ unitLabel }} rain</span>
       </div>
       
       <!-- Powder alert badge -->

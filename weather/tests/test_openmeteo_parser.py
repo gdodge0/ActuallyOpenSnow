@@ -447,6 +447,56 @@ class TestParseFlatBuffersResponse:
         assert forecast.hourly_units["precipitation"] == "mm"
         assert forecast.hourly_units["freezing_level_height"] == "m"
 
+    def test_respects_requested_hourly_order_for_units(self, caplog):
+        """Ensure units stay aligned when hourly variable order changes."""
+        hours = 3
+        time_start = int(datetime(2024, 1, 15, 0, tzinfo=timezone.utc).timestamp())
+        time_end = time_start + hours * 3600
+
+        # Insert an extra temperature variable before snowfall to mimic client-side order.
+        requested_hourly = (
+            "temperature_2m",
+            "wind_speed_10m",
+            "wind_gusts_10m",
+            "apparent_temperature",  # extra temperature variable
+            "snowfall",
+            "precipitation",
+            "freezing_level_height",
+        )
+
+        variables = {
+            0: (np.array([-5.0, -4.5, -4.0]), 1),  # temperature_2m (C)
+            1: (np.array([20.0, 21.0, 22.0]), 8),  # wind_speed_10m (kmh)
+            2: (np.array([30.0, 31.0, 32.0]), 8),  # wind_gusts_10m (kmh)
+            3: (np.array([12.0, 13.0, 14.0]), 2),  # apparent_temperature (F)
+            4: (np.array([0.5, 0.7, 1.0]), 4),     # snowfall (cm)
+            5: (np.array([1.0, 1.1, 1.2]), 3),     # precipitation (mm)
+            6: (np.array([2000.0, 2005.0, 2010.0]), 5),  # freezing_level_height (m)
+        }
+
+        hourly = MockHourly(
+            time_start=time_start,
+            time_end=time_end,
+            interval=3600,
+            variables=variables,
+        )
+        response = MockFlatBuffersResponse(hourly=hourly)
+
+        with caplog.at_level("WARNING"):
+            forecast = parse_openmeteo_response(
+                response=response,
+                requested_lat=43.48,
+                requested_lon=-110.76,
+                model_id="gfs",
+                hourly_variables=requested_hourly,
+            )
+
+        # Snowfall should use the cm unit and not inherit the Fahrenheit unit.
+        assert forecast.hourly_units["snowfall"] == "cm"
+        assert forecast.hourly_data["snowfall"][0] == 0.5
+        assert forecast.hourly_units["apparent_temperature"] == "F"
+        assert "Unit category mismatch for snowfall" not in caplog.text
+
     def test_elevation_override(self):
         """Test that elevation override is applied."""
         response = MockFlatBuffersResponse(elevation=2500.0)

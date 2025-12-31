@@ -8,6 +8,11 @@ from weather.utils.time import (
     slice_time_range,
     ensure_utc,
 )
+from weather.utils.snow import (
+    get_snow_ratio,
+    calculate_snowfall_from_precip,
+    calculate_hourly_snowfall,
+)
 
 __all__ = [
     # Geo utilities
@@ -19,5 +24,9 @@ __all__ = [
     "get_time_index",
     "slice_time_range",
     "ensure_utc",
+    # Snow utilities
+    "get_snow_ratio",
+    "calculate_snowfall_from_precip",
+    "calculate_hourly_snowfall",
 ]
 

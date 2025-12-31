@@ -12,6 +12,7 @@ from weather.units.convert import convert_value, convert_series
 from weather.units.normalize import normalize_unit
 from weather.utils.geo import coords_are_equivalent
 from weather.utils.time import slice_time_range, resolve_time_offset
+from weather.utils.snow import calculate_hourly_snowfall
 
 TimeOffset = Union[datetime, timedelta]
 
@@ -50,6 +51,11 @@ class Forecast:
     # Accumulated series (computed lazily)
     _snowfall_accumulated: tuple[float, ...] | None = field(default=None, repr=False)
     _precip_accumulated: tuple[float, ...] | None = field(default=None, repr=False)
+    
+    # Enhanced snowfall (computed lazily)
+    _enhanced_snowfall: tuple[float, ...] | None = field(default=None, repr=False)
+    _rain: tuple[float, ...] | None = field(default=None, repr=False)
+    _is_snow: tuple[bool, ...] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Validate and normalize forecast data."""
@@ -245,6 +251,206 @@ class Forecast:
         return series
 
     # -------------------------------------------------------------------------
+    # Enhanced snowfall (temperature-based calculation)
+    # -------------------------------------------------------------------------
+
+    def _compute_enhanced_snowfall(self) -> None:
+        """Compute enhanced snowfall from precipitation and temperature."""
+        if self._enhanced_snowfall is not None:
+            return  # Already computed
+        
+        # Get required data
+        precip = self.hourly_data.get("precipitation", ())
+        temp = self.hourly_data.get("temperature_2m", ())
+        freezing_levels = self.hourly_data.get("freezing_level_height", None)
+        
+        if not precip:
+            self._enhanced_snowfall = ()
+            self._rain = ()
+            self._is_snow = ()
+            return
+        
+        # Get units and convert if needed
+        precip_unit = self.hourly_units.get("precipitation", "mm")
+        temp_unit = self.hourly_units.get("temperature_2m", "C")
+        
+        # Convert precipitation to mm if needed
+        if precip_unit != "mm":
+            precip = tuple(
+                convert_value(v, precip_unit, "mm") if v is not None else None
+                for v in precip
+            )
+        
+        # Convert temperature to Celsius if needed
+        if temp_unit != "C" and temp:
+            from weather.units.convert import convert_temperature
+            temp = tuple(
+                convert_temperature(v, temp_unit, "C") if v is not None else None
+                for v in temp
+            )
+        
+        # Calculate enhanced snowfall
+        self._enhanced_snowfall, self._rain, self._is_snow = calculate_hourly_snowfall(
+            precip_values=precip,
+            temp_values=temp,
+            freezing_levels=freezing_levels,
+            elevation_m=self.elevation_m,
+        )
+
+    def get_enhanced_snowfall(self, unit: str = "cm") -> Series:
+        """Get enhanced snowfall calculated from precipitation and temperature.
+        
+        This uses temperature-dependent snow-to-liquid ratios for more
+        accurate snowfall estimates, especially in cold conditions where
+        lighter, fluffier snow produces higher accumulations.
+
+        Args:
+            unit: Target unit (mm, cm, in, or ft). Default is cm.
+
+        Returns:
+            Enhanced snowfall series with specified unit.
+        """
+        self._compute_enhanced_snowfall()
+        
+        # Enhanced snowfall is computed in cm
+        series = Series(values=self._enhanced_snowfall, unit="cm")
+
+        if unit is not None:
+            target_unit = normalize_unit(unit)
+            series = convert_series(series, target_unit)
+
+        return series
+
+    def get_rain(self, unit: str = "mm") -> Series:
+        """Get rain (precipitation that falls as liquid, not snow).
+
+        Args:
+            unit: Target unit (mm, cm, in, or ft). Default is mm.
+
+        Returns:
+            Rain series with specified unit.
+        """
+        self._compute_enhanced_snowfall()
+        
+        # Rain is computed in mm
+        series = Series(values=self._rain, unit="mm")
+
+        if unit is not None:
+            target_unit = normalize_unit(unit)
+            series = convert_series(series, target_unit)
+
+        return series
+
+    def get_enhanced_snowfall_accumulated(self, unit: str = "cm") -> Series:
+        """Get cumulative enhanced snowfall.
+
+        Args:
+            unit: Target unit (mm, cm, in, or ft). Default is cm.
+
+        Returns:
+            Accumulated enhanced snowfall series with specified unit.
+        """
+        self._compute_enhanced_snowfall()
+        
+        # Compute accumulated
+        accumulated = []
+        total = 0.0
+        for v in self._enhanced_snowfall:
+            if v is not None:
+                total += v
+            accumulated.append(total)
+        
+        series = Series(values=tuple(accumulated), unit="cm")
+
+        if unit is not None:
+            target_unit = normalize_unit(unit)
+            series = convert_series(series, target_unit)
+
+        return series
+
+    def get_enhanced_snowfall_total(
+        self,
+        unit: str = "cm",
+        start: TimeOffset | None = None,
+        end: TimeOffset | None = None,
+    ) -> Quantity:
+        """Get total enhanced snowfall over a time range.
+
+        Args:
+            unit: Target unit (mm, cm, in, or ft). Default is cm.
+            start: Start of range (datetime or timedelta). Default is forecast start.
+            end: End of range (datetime or timedelta). Default is forecast end.
+
+        Returns:
+            A Quantity with the total enhanced snowfall.
+        """
+        self._compute_enhanced_snowfall()
+        
+        if not self.times_utc:
+            raise RangeError("No forecast data available")
+
+        # Default to full range
+        if start is None:
+            start = timedelta(0)
+        if end is None:
+            end = timedelta(hours=len(self.times_utc))
+
+        # Get indices for the range
+        start_idx, end_idx = slice_time_range(start, end, self.times_utc)
+
+        # Sum values in range
+        range_values = self._enhanced_snowfall[start_idx:end_idx]
+        total = sum(v for v in range_values if v is not None)
+
+        # Convert unit if needed
+        target_unit = normalize_unit(unit)
+        if target_unit != "cm":
+            total = convert_value(total, "cm", target_unit)
+
+        return Quantity(value=total, unit=target_unit)
+
+    def get_rain_total(
+        self,
+        unit: str = "mm",
+        start: TimeOffset | None = None,
+        end: TimeOffset | None = None,
+    ) -> Quantity:
+        """Get total rain over a time range.
+
+        Args:
+            unit: Target unit (mm, cm, in, or ft). Default is mm.
+            start: Start of range (datetime or timedelta). Default is forecast start.
+            end: End of range (datetime or timedelta). Default is forecast end.
+
+        Returns:
+            A Quantity with the total rain.
+        """
+        self._compute_enhanced_snowfall()
+        
+        if not self.times_utc:
+            raise RangeError("No forecast data available")
+
+        # Default to full range
+        if start is None:
+            start = timedelta(0)
+        if end is None:
+            end = timedelta(hours=len(self.times_utc))
+
+        # Get indices for the range
+        start_idx, end_idx = slice_time_range(start, end, self.times_utc)
+
+        # Sum values in range
+        range_values = self._rain[start_idx:end_idx]
+        total = sum(v for v in range_values if v is not None)
+
+        # Convert unit if needed
+        target_unit = normalize_unit(unit)
+        if target_unit != "mm":
+            total = convert_value(total, "mm", target_unit)
+
+        return Quantity(value=total, unit=target_unit)
+
+    # -------------------------------------------------------------------------
     # Range totals
     # -------------------------------------------------------------------------
 
@@ -390,13 +596,16 @@ class Forecast:
     # Serialization
     # -------------------------------------------------------------------------
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_enhanced: bool = True) -> dict[str, Any]:
         """Convert forecast to a dictionary for JSON serialization.
+
+        Args:
+            include_enhanced: Whether to include enhanced snowfall data.
 
         Returns:
             Dictionary representation of the forecast.
         """
-        return {
+        result = {
             "lat": self.lat,
             "lon": self.lon,
             "api_lat": self.api_lat,
@@ -410,6 +619,20 @@ class Forecast:
             "hourly_data": {k: list(v) for k, v in self.hourly_data.items()},
             "hourly_units": self.hourly_units,
         }
+        
+        if include_enhanced:
+            # Compute and include enhanced snowfall data
+            self._compute_enhanced_snowfall()
+            result["enhanced_hourly_data"] = {
+                "enhanced_snowfall": list(self._enhanced_snowfall) if self._enhanced_snowfall else [],
+                "rain": list(self._rain) if self._rain else [],
+            }
+            result["enhanced_hourly_units"] = {
+                "enhanced_snowfall": "cm",
+                "rain": "mm",
+            }
+        
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Forecast:
