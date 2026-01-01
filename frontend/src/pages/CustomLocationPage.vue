@@ -341,7 +341,7 @@ function handleModelChange(modelId: string) {
     <!-- Rate Limit Error -->
     <RateLimitError 
       v-else-if="isRateLimitError"
-      :retry-after-seconds="10"
+      :retry-after-seconds="60"
       @retry="loadForecast"
     />
     

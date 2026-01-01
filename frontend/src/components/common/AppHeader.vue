@@ -127,7 +127,7 @@ function toggleUnits() {
           <!-- Unit toggle -->
           <button
             @click="toggleUnits"
-            class="px-3 py-1.5 rounded-lg bg-mountain-800 hover:bg-mountain-700 text-mountain-200 font-mono text-sm transition-colors"
+            class="px-3 py-2 rounded-lg bg-mountain-800 hover:bg-mountain-700 text-mountain-200 font-mono text-sm transition-colors"
           >
             {{ settingsStore.temperatureUnit === 'F' ? '°F / in' : '°C / cm' }}
           </button>
