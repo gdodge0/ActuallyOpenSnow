@@ -8,6 +8,7 @@ from typing import Any
 
 import openmeteo_requests
 import requests_cache
+from requests.adapters import HTTPAdapter
 from retry_requests import retry
 
 from weather.clients.base import BaseClient, ClientConfig
@@ -25,6 +26,18 @@ from weather.domain.errors import ApiError
 from weather.parsing.openmeteo_parser import parse_openmeteo_response
 
 logger = logging.getLogger(__name__)
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    """HTTPAdapter that enforces a default timeout on all requests."""
+
+    def __init__(self, timeout: int = 30, *args: Any, **kwargs: Any) -> None:
+        self.timeout = timeout
+        super().__init__(*args, **kwargs)
+
+    def send(self, request: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+        kwargs.setdefault("timeout", self.timeout)
+        return super().send(request, **kwargs)
 
 
 class MeteoClient(BaseClient):
@@ -72,12 +85,17 @@ class MeteoClient(BaseClient):
         self._setup_session()
 
     def _setup_session(self) -> None:
-        """Configure the requests session with caching and retries."""
+        """Configure the requests session with caching, retries, and timeouts."""
         # Create a cached session
         cache_session = requests_cache.CachedSession(
             ".weather_cache",
             expire_after=self.config.cache_expire_after,
         )
+
+        # Mount timeout-aware adapter so all requests enforce the timeout
+        timeout_adapter = TimeoutHTTPAdapter(timeout=self.config.timeout)
+        cache_session.mount("https://", timeout_adapter)
+        cache_session.mount("http://", timeout_adapter)
 
         # Wrap with retry logic
         retry_session = retry(

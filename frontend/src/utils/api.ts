@@ -7,7 +7,7 @@ import type { Resort, ModelInfo, Forecast, ComparisonResponse } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 60000,  // Increased timeout for blend model
+  timeout: 180000,  // 3 minutes — must exceed nginx proxy_read_timeout (180s)
 })
 
 // Request interceptor for logging

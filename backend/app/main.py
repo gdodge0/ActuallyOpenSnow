@@ -109,6 +109,7 @@ executor: ThreadPoolExecutor | None = None
 # Key: cache_key, Value: (timestamp, ForecastResponse)
 blend_cache: dict[str, tuple[float, ForecastResponse]] = {}
 BLEND_CACHE_TTL = 1800  # 30 minutes
+ASYNC_GATHER_TIMEOUT = 120  # seconds — max wait for parallel model fetches
 
 
 @asynccontextmanager
@@ -116,7 +117,7 @@ async def lifespan(app: FastAPI):
     """Initialize the MeteoClient on startup."""
     global client, executor, blend_cache
     client = MeteoClient(cache_expire_after=1800)  # 30 min cache
-    executor = ThreadPoolExecutor(max_workers=10)  # Parallel API calls
+    executor = ThreadPoolExecutor(max_workers=20)  # Parallel API calls (5 per blend × 4 concurrent)
     # Clear blend cache on startup (ensures fresh data after weight changes)
     blend_cache.clear()
     weights = get_blend_weights()
@@ -129,7 +130,7 @@ async def lifespan(app: FastAPI):
     if client:
         client.clear_cache()
     if executor:
-        executor.shutdown(wait=False)
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 app = FastAPI(
@@ -408,8 +409,11 @@ async def fetch_blend_forecast(
         for model_id in BLEND_MODELS
     ]
     
-    results = await asyncio.gather(*tasks)
-    
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=ASYNC_GATHER_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Blend forecast timed out — upstream models took too long")
+
     # Collect successful forecasts
     forecasts: dict[str, dict] = {}
     model_run_times: list[datetime] = []
@@ -567,18 +571,22 @@ async def batch_resort_forecasts(
     """Fetch forecasts for multiple resorts in a single request."""
     if client is None:
         raise HTTPException(status_code=503, detail="Weather client not initialized")
-    
+    if executor is None:
+        raise HTTPException(status_code=503, detail="Thread pool not initialized")
+
     slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
     if not slug_list:
         raise HTTPException(status_code=400, detail="At least one resort slug required")
     if len(slug_list) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 resorts per batch request")
-    
+
+    loop = asyncio.get_event_loop()
+
     async def fetch_resort(slug: str) -> tuple[str, ForecastResponse | None, str | None]:
         resort = get_resort_by_slug(slug)
         if not resort:
             return slug, None, f"Resort '{slug}' not found"
-        
+
         # Determine elevation
         elev_m: float | None = None
         if elevation == "summit":
@@ -593,17 +601,16 @@ async def batch_resort_forecasts(
                     return slug, None, "Elevation must be between 0 and 9000 meters"
             except ValueError:
                 elev_m = resort.summit_elevation_m
-        
+
         try:
             if model == "blend":
                 forecast = await fetch_blend_forecast(resort.lat, resort.lon, elev_m)
             else:
-                raw_forecast = client.get_forecast(
-                    lat=resort.lat,
-                    lon=resort.lon,
-                    model=model,
-                    elevation=elev_m,
+                _, raw_forecast, error = await loop.run_in_executor(
+                    executor, fetch_single_model, model, resort.lat, resort.lon, elev_m,
                 )
+                if raw_forecast is None:
+                    return slug, None, error or "Unknown error"
                 forecast = forecast_to_response(raw_forecast)
             return slug, forecast, None
         except Exception as e:
@@ -611,8 +618,11 @@ async def batch_resort_forecasts(
     
     # Fetch all resorts in parallel
     tasks = [fetch_resort(slug) for slug in slug_list]
-    results = await asyncio.gather(*tasks)
-    
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=ASYNC_GATHER_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Batch forecast timed out — upstream models took too long")
+
     # Build response
     forecasts: dict[str, ForecastResponse] = {}
     errors: dict[str, str] = {}
@@ -664,13 +674,16 @@ async def get_forecast(
     if model == "blend":
         return await fetch_blend_forecast(lat, lon, elevation)
     
+    if executor is None:
+        raise HTTPException(status_code=503, detail="Thread pool not initialized")
+
     try:
-        forecast = client.get_forecast(
-            lat=lat,
-            lon=lon,
-            model=model,
-            elevation=elevation,
+        loop = asyncio.get_event_loop()
+        model_id, forecast, error = await loop.run_in_executor(
+            executor, fetch_single_model, model, lat, lon, elevation,
         )
+        if forecast is None:
+            raise ApiError(error or "Unknown error")
         return forecast_to_response(forecast)
     except ModelError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -720,14 +733,17 @@ async def get_resort_forecast(
     # Handle blend model
     if model == "blend":
         return await fetch_blend_forecast(resort.lat, resort.lon, elev_m)
-    
+
+    if executor is None:
+        raise HTTPException(status_code=503, detail="Thread pool not initialized")
+
     try:
-        forecast = client.get_forecast(
-            lat=resort.lat,
-            lon=resort.lon,
-            model=model,
-            elevation=elev_m,
+        loop = asyncio.get_event_loop()
+        model_id, forecast, error = await loop.run_in_executor(
+            executor, fetch_single_model, model, resort.lat, resort.lon, elev_m,
         )
+        if forecast is None:
+            raise ApiError(error or "Unknown error")
         return forecast_to_response(forecast)
     except ModelError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -749,32 +765,49 @@ async def compare_models(
     """Compare forecasts from multiple models."""
     if client is None:
         raise HTTPException(status_code=503, detail="Weather client not initialized")
-    
+    if executor is None:
+        raise HTTPException(status_code=503, detail="Thread pool not initialized")
+
     # Check unique coordinates rate limit
     check_unique_coords_limit(request, lat, lon)
-    
+
     model_ids = [m.strip() for m in models.split(",") if m.strip()]
     if not model_ids:
         raise HTTPException(status_code=400, detail="At least one model required")
-    
+
+    # Fetch all models in parallel
+    loop = asyncio.get_event_loop()
+
+    async def fetch_compare_model(mid: str) -> tuple[str, ForecastResponse | None, str | None]:
+        try:
+            if mid == "blend":
+                resp = await fetch_blend_forecast(lat, lon, elevation)
+                return mid, resp, None
+            else:
+                _, forecast, error = await loop.run_in_executor(
+                    executor, fetch_single_model, mid, lat, lon, elevation,
+                )
+                if forecast is None:
+                    return mid, None, error
+                return mid, forecast_to_response(forecast), None
+        except (ModelError, ApiError) as e:
+            return mid, None, str(e)
+
+    compare_tasks = [fetch_compare_model(mid) for mid in model_ids]
+    try:
+        compare_results = await asyncio.wait_for(asyncio.gather(*compare_tasks), timeout=ASYNC_GATHER_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Model comparison timed out — upstream models took too long")
+
     forecasts: dict[str, ForecastResponse] = {}
     errors: list[str] = []
-    
-    for model_id in model_ids:
-        try:
-            if model_id == "blend":
-                forecasts["blend"] = await fetch_blend_forecast(lat, lon, elevation)
-            else:
-                forecast = client.get_forecast(
-                    lat=lat,
-                    lon=lon,
-                    model=model_id,
-                    elevation=elevation,
-                )
-                forecasts[model_id] = forecast_to_response(forecast)
-        except (ModelError, ApiError) as e:
-            errors.append(f"{model_id}: {e}")
-    
+
+    for mid, resp, error in compare_results:
+        if resp is not None:
+            forecasts[mid] = resp
+        elif error:
+            errors.append(f"{mid}: {error}")
+
     if not forecasts:
         raise HTTPException(
             status_code=502,
@@ -824,6 +857,7 @@ async def compare_resort_models(
             )
     
     return await compare_models(
+        request=request,
         lat=resort.lat,
         lon=resort.lon,
         models=models,
@@ -889,8 +923,11 @@ async def debug_blend(
         loop.run_in_executor(executor, fetch_single_model, model_id, lat, lon, elevation)
         for model_id in BLEND_MODELS
     ]
-    results = await asyncio.gather(*tasks)
-    
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=ASYNC_GATHER_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Debug blend timed out — upstream models took too long")
+
     # Calculate totals for each model
     model_totals = {}
     model_errors = {}

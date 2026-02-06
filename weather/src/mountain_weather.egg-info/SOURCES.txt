@@ -25,6 +25,7 @@ src/weather/units/normalize.py
 src/weather/units/openmeteo_units.py
 src/weather/utils/__init__.py
 src/weather/utils/geo.py
+src/weather/utils/snow.py
 src/weather/utils/time.py
 tests/test_client_openmeteo_mocked.py
 tests/test_config_models.py
