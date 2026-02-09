@@ -105,6 +105,25 @@ export const useForecastStore = defineStore('forecast', () => {
   const modelRunTime = computed(() => {
     return currentForecast.value?.model_run_utc ?? null
   })
+
+  // Computed: whether ensemble prediction ranges are available
+  const hasEnsembleRanges = computed(() => {
+    return !!currentForecast.value?.ensemble_ranges?.enhanced_snowfall
+  })
+
+  // Computed: ensemble snowfall range totals for next 72h
+  const ensembleSnowfall72h = computed(() => {
+    if (!currentForecast.value?.ensemble_ranges?.enhanced_snowfall) return null
+    const { p10, p90 } = currentForecast.value.ensemble_ranges.enhanced_snowfall
+    const hours = Math.min(72, p10.length)
+    let totalP10 = 0
+    let totalP90 = 0
+    for (let i = 0; i < hours; i++) {
+      totalP10 += p10[i] ?? 0
+      totalP90 += p90[i] ?? 0
+    }
+    return { p10: totalP10, p90: totalP90 }
+  })
   
   // Cache key generator - includes elevation for proper caching
   function getCacheKey(slug: string, model: string, elevation?: string | number): string {
@@ -223,6 +242,8 @@ export const useForecastStore = defineStore('forecast', () => {
     rain72h,
     forecastDays,
     modelRunTime,
+    hasEnsembleRanges,
+    ensembleSnowfall72h,
     
     // Actions
     loadModels,

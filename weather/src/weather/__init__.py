@@ -19,8 +19,9 @@ from weather.utils.snow import (
 __version__ = "0.1.0"
 
 __all__ = [
-    # Main client
+    # Main clients
     "MeteoClient",
+    "HerbieClient",
     # Data models
     "Forecast",
     "Quantity",
@@ -36,4 +37,12 @@ __all__ = [
     "calculate_snowfall_from_precip",
     "calculate_hourly_snowfall",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import for optional dependencies."""
+    if name == "HerbieClient":
+        from weather.clients.herbie_client import HerbieClient
+        return HerbieClient
+    raise AttributeError(f"module 'weather' has no attribute {name!r}")
 

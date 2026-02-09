@@ -3,6 +3,43 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: actuallyopensnow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network-dev
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data-dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network-dev
+
   # FastAPI Backend with hot reload
   backend:
     build:
@@ -13,16 +50,68 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
-      # Blend model weights (configurable)
-      - BLEND_WEIGHT_GFS=2.0
-      - BLEND_WEIGHT_IFS=2.0
-      - BLEND_WEIGHT_AIFS=2.0
-      - BLEND_WEIGHT_ICON=1.0
-      - BLEND_WEIGHT_JMA=1.0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - ENGINE_BACKEND_URL=http://engine-backend:8001
     volumes:
       - ./backend/app:/app/backend/app:ro
       - ./weather/src:/app/weather/src:ro
-      - weather-cache-dev:/app/backend/.weather_cache
+      - ./db:/app/db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network-dev
+
+  # Engine - GRIB2 background processor
+  engine:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - GRIB_CACHE_DIR=/data/grib-cache
+    volumes:
+      - grib-cache-dev:/data/grib-cache
+      - ./engine:/app/engine:ro
+      - ./weather/src:/app/weather/src:ro
+      - ./db:/app/db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network-dev
+
+  # Engine-Backend - Control API + Dashboard
+  engine-backend:
+    build:
+      context: .
+      dockerfile: engine-backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - GRIB_CACHE_DIR=/data/grib-cache
+    volumes:
+      - grib-cache-dev:/data/grib-cache:ro
+      - ./engine-backend/app:/app/engine-backend/app:ro
+      - ./weather/src:/app/weather/src:ro
+      - ./db:/app/db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - app-network-dev
 
@@ -34,6 +123,8 @@ services:
     restart: unless-stopped
     ports:
       - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:8000
     volumes:
       - ./frontend/src:/app/src:ro
       - ./frontend/index.html:/app/index.html:ro
@@ -47,5 +138,9 @@ networks:
     driver: bridge
 
 volumes:
-  weather-cache-dev:
+  postgres-data-dev:
+    driver: local
+  redis-data-dev:
+    driver: local
+  grib-cache-dev:
     driver: local

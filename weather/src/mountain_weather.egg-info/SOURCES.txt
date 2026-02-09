@@ -9,6 +9,7 @@ src/weather/__init__.py
 src/weather/py.typed
 src/weather/clients/__init__.py
 src/weather/clients/base.py
+src/weather/clients/herbie_client.py
 src/weather/clients/openmeteo.py
 src/weather/config/__init__.py
 src/weather/config/defaults.py
@@ -18,6 +19,7 @@ src/weather/domain/errors.py
 src/weather/domain/forecast.py
 src/weather/domain/quantities.py
 src/weather/parsing/__init__.py
+src/weather/parsing/grib2_parser.py
 src/weather/parsing/openmeteo_parser.py
 src/weather/units/__init__.py
 src/weather/units/convert.py
@@ -29,10 +31,13 @@ src/weather/utils/snow.py
 src/weather/utils/time.py
 tests/test_client_openmeteo_mocked.py
 tests/test_config_models.py
+tests/test_config_models_herbie.py
 tests/test_domain_errors.py
 tests/test_equivalence.py
 tests/test_forecast_getters.py
 tests/test_forecast_serialization.py
+tests/test_grib2_parser.py
+tests/test_herbie_client.py
 tests/test_openmeteo_parser.py
 tests/test_openmeteo_units.py
 tests/test_quantities.py

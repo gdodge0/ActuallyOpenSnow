@@ -45,6 +45,12 @@ export interface Forecast {
     enhanced_snowfall: string
     rain: string
   }
+  // Ensemble prediction ranges (10th/90th percentile from GEFS/ECMWF ENS)
+  ensemble_ranges?: {
+    enhanced_snowfall?: { p10: number[]; p90: number[] }
+    temperature_2m?: { p10: number[]; p90: number[] }
+    precipitation?: { p10: number[]; p90: number[] }
+  }
 }
 
 // Multi-model comparison response

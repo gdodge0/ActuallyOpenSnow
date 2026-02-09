@@ -152,37 +152,88 @@ const chartData = computed(() => {
   
   // Label changes based on mode
   const modeLabel = settingsStore.snowfallMode === 'enhanced' ? 'Enhanced' : 'Conservative'
-  
+
+  // Build datasets
+  const datasets: any[] = []
+
+  // Ensemble prediction range (p10/p90 confidence bands)
+  const ensembleKey = settingsStore.snowfallMode === 'enhanced' ? 'enhanced_snowfall' : undefined
+  const ensembleRange = ensembleKey ? props.forecast.ensemble_ranges?.[ensembleKey] : undefined
+
+  if (ensembleRange) {
+    const p10: number[] = []
+    const p90: number[] = []
+    for (let i = 0; i < displayHours.value; i++) {
+      const rawP10 = ensembleRange.p10[i] ?? 0
+      const rawP90 = ensembleRange.p90[i] ?? 0
+      p10.push(convertPrecipitation(rawP10, fromUnit, settingsStore.precipitationUnit) ?? 0)
+      p90.push(convertPrecipitation(rawP90, fromUnit, settingsStore.precipitationUnit) ?? 0)
+    }
+
+    // P90 upper bound (filled down to p10)
+    datasets.push({
+      type: 'line' as const,
+      label: 'Prediction Range (90th)',
+      data: p90,
+      borderColor: 'rgba(56, 189, 248, 0.3)',
+      backgroundColor: 'rgba(56, 189, 248, 0.12)',
+      fill: '+1',
+      tension: 0.4,
+      pointRadius: 0,
+      borderWidth: 1,
+      borderDash: [4, 4],
+      yAxisID: 'y',
+    })
+
+    // P10 lower bound
+    datasets.push({
+      type: 'line' as const,
+      label: 'Prediction Range (10th)',
+      data: p10,
+      borderColor: 'rgba(56, 189, 248, 0.3)',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.4,
+      pointRadius: 0,
+      borderWidth: 1,
+      borderDash: [4, 4],
+      yAxisID: 'y',
+    })
+  }
+
+  // Main hourly snow bars
+  datasets.push({
+    type: 'bar' as const,
+    label: `Hourly Snow (${modeLabel})`,
+    data: hourlySnow,
+    backgroundColor: settingsStore.snowfallMode === 'enhanced'
+      ? 'rgba(56, 189, 248, 0.6)'
+      : 'rgba(148, 163, 184, 0.6)',
+    borderColor: settingsStore.snowfallMode === 'enhanced'
+      ? 'rgba(56, 189, 248, 1)'
+      : 'rgba(148, 163, 184, 1)',
+    borderWidth: 1,
+    borderRadius: 2,
+    yAxisID: 'y',
+  })
+
+  // Accumulated total line
+  datasets.push({
+    type: 'line' as const,
+    label: 'Accumulated',
+    data: accumulated,
+    borderColor: 'rgba(168, 85, 247, 0.8)',
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    fill: true,
+    tension: 0.4,
+    pointRadius: 0,
+    borderWidth: 2,
+    yAxisID: 'y1',
+  })
+
   return {
     labels,
-    datasets: [
-      {
-        type: 'bar' as const,
-        label: `Hourly Snow (${modeLabel})`,
-        data: hourlySnow,
-        backgroundColor: settingsStore.snowfallMode === 'enhanced' 
-          ? 'rgba(56, 189, 248, 0.6)' 
-          : 'rgba(148, 163, 184, 0.6)',
-        borderColor: settingsStore.snowfallMode === 'enhanced'
-          ? 'rgba(56, 189, 248, 1)'
-          : 'rgba(148, 163, 184, 1)',
-        borderWidth: 1,
-        borderRadius: 2,
-        yAxisID: 'y',
-      },
-      {
-        type: 'line' as const,
-        label: 'Accumulated',
-        data: accumulated,
-        borderColor: 'rgba(168, 85, 247, 0.8)',
-        backgroundColor: 'rgba(168, 85, 247, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        borderWidth: 2,
-        yAxisID: 'y1',
-      },
-    ],
+    datasets,
   }
 })
 
@@ -202,6 +253,7 @@ const chartOptions = computed(() => ({
         usePointStyle: true,
         pointStyle: 'rect',
         padding: 20,
+        filter: (item: any) => !item.text?.startsWith('Prediction Range'),
       },
     },
     tooltip: {

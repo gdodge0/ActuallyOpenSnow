@@ -34,6 +34,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+herbie = [
+    "herbie-data>=2024.1.0",
+    "xarray>=2023.1.0",
+    "cfgrib>=0.9.10",
+    "eccodes>=1.6.0",
+    "scikit-learn>=1.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

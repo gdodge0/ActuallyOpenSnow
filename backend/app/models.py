@@ -46,6 +46,8 @@ class ForecastResponse(BaseModel):
     # Enhanced snowfall data (calculated from precipitation + temperature)
     enhanced_hourly_data: Optional[dict[str, list[float]]] = None
     enhanced_hourly_units: Optional[dict[str, str]] = None
+    # Ensemble prediction ranges (10th/90th percentile)
+    ensemble_ranges: Optional[dict[str, dict[str, list[float]]]] = None
 
 
 class ComparisonResponse(BaseModel):

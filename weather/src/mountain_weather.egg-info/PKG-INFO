@@ -24,6 +24,12 @@ Requires-Dist: requests-cache>=1.1.0
 Requires-Dist: retry-requests>=2.0.0
 Requires-Dist: pandas>=2.0.0
 Requires-Dist: numpy>=1.24.0
+Provides-Extra: herbie
+Requires-Dist: herbie-data>=2024.1.0; extra == "herbie"
+Requires-Dist: xarray>=2023.1.0; extra == "herbie"
+Requires-Dist: cfgrib>=0.9.10; extra == "herbie"
+Requires-Dist: eccodes>=1.6.0; extra == "herbie"
+Requires-Dist: scikit-learn>=1.0.0; extra == "herbie"
 Provides-Extra: dev
 Requires-Dist: pytest>=7.4.0; extra == "dev"
 Requires-Dist: pytest-cov>=4.1.0; extra == "dev"

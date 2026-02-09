@@ -1,6 +1,6 @@
 # Makefile for ActuallyOpenSnow
 
-.PHONY: help build up down logs dev prod clean
+.PHONY: help build up down logs dev prod clean status migrate seed
 
 help:
 	@echo "ActuallyOpenSnow Docker Commands"
@@ -15,6 +15,10 @@ help:
 	@echo "Development (local with port bindings):"
 	@echo "  make dev      - Start development environment"
 	@echo "  make dev-down - Stop development containers"
+	@echo ""
+	@echo "Database:"
+	@echo "  make migrate  - Run Alembic migrations"
+	@echo "  make seed     - Seed resorts into database"
 	@echo ""
 	@echo "Utility:"
 	@echo "  make clean    - Remove containers, images, and volumes"
@@ -42,6 +46,12 @@ logs-backend:
 logs-frontend:
 	docker-compose -f docker-compose.yaml logs -f frontend
 
+logs-engine:
+	docker-compose -f docker-compose.yaml logs -f engine
+
+logs-engine-backend:
+	docker-compose -f docker-compose.yaml logs -f engine-backend
+
 # Development (with port bindings for local use)
 dev:
 	docker-compose -f docker-compose.dev.yaml up --build
@@ -51,6 +61,13 @@ dev-d:
 
 dev-down:
 	docker-compose -f docker-compose.dev.yaml down
+
+# Database management
+migrate:
+	cd db && alembic upgrade head
+
+seed:
+	python db/seed.py
 
 # Cleanup
 clean:
@@ -64,6 +81,12 @@ backend:
 frontend:
 	docker-compose -f docker-compose.yaml up -d frontend
 
+engine:
+	docker-compose -f docker-compose.yaml up -d engine
+
+engine-backend:
+	docker-compose -f docker-compose.yaml up -d engine-backend
+
 # Rebuild specific service
 rebuild-backend:
 	docker-compose -f docker-compose.yaml build backend
@@ -72,6 +95,10 @@ rebuild-backend:
 rebuild-frontend:
 	docker-compose -f docker-compose.yaml build frontend
 	docker-compose -f docker-compose.yaml up -d frontend
+
+rebuild-engine:
+	docker-compose -f docker-compose.yaml build engine
+	docker-compose -f docker-compose.yaml up -d engine
 
 # Status
 status:

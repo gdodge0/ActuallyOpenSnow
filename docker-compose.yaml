@@ -1,7 +1,90 @@
 version: '3.8'
 
 services:
-  # FastAPI Backend
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: actuallyopensnow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # Engine - GRIB2 background processor
+  engine:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - GRIB_CACHE_DIR=/data/grib-cache
+    volumes:
+      - grib-cache:/data/grib-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Engine-Backend - Control API + Dashboard
+  engine-backend:
+    build:
+      context: .
+      dockerfile: engine-backend/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - GRIB_CACHE_DIR=/data/grib-cache
+    volumes:
+      - grib-cache:/data/grib-cache:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/api/engine/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
+
+  # FastAPI Backend (read-only API)
   backend:
     build:
       context: .
@@ -11,19 +94,15 @@ services:
       - "8000"
     environment:
       - PYTHONUNBUFFERED=1
-      # Production mode - disables debug endpoints
       - ENVIRONMENT=production
-      # Blend model weights (higher = more influence)
-      # GFS, IFS, AIFS weighted 2x (primary models)
-      # ICON, JMA weighted 1x (supplementary models)
-      # Set to 0 to exclude a model from the blend
-      - BLEND_WEIGHT_GFS=3.0
-      - BLEND_WEIGHT_IFS=3.0
-      - BLEND_WEIGHT_AIFS=3.0
-      - BLEND_WEIGHT_ICON=1.0
-      - BLEND_WEIGHT_JMA=1.0
-    volumes:
-      - weather-cache:/app/backend/.weather_cache
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/actuallyopensnow
+      - REDIS_URL=redis://redis:6379/0
+      - ENGINE_BACKEND_URL=http://engine-backend:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
       interval: 10s
@@ -58,5 +137,9 @@ networks:
     driver: bridge
 
 volumes:
-  weather-cache:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  grib-cache:
     driver: local

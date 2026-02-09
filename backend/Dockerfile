@@ -23,6 +23,9 @@ COPY weather/src /app/weather/src
 # Install weather package
 RUN pip install /app/weather
 
+# Copy db package (shared ORM)
+COPY db /app/db
+
 # Copy backend requirements and install
 COPY backend/requirements.txt /app/backend/
 RUN pip install -r /app/backend/requirements.txt

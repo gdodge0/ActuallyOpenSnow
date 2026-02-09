@@ -109,12 +109,22 @@ class TestModelsRegistry:
         """Test that all models have required fields populated."""
         for model_id, config in MODELS.items():
             assert config.model_id == model_id
-            assert config.api_model, f"{model_id} missing api_model"
+            # Herbie-only models may have empty api_model
+            assert config.api_model is not None, f"{model_id} api_model is None"
             assert config.display_name, f"{model_id} missing display_name"
             assert config.provider, f"{model_id} missing provider"
             assert config.max_forecast_days > 0, f"{model_id} invalid max_forecast_days"
             assert config.resolution_degrees > 0, f"{model_id} invalid resolution"
             assert config.description, f"{model_id} missing description"
+
+    def test_all_models_have_api_or_herbie(self):
+        """Test that every model has at least Open-Meteo API or Herbie access."""
+        for model_id, config in MODELS.items():
+            has_api = bool(config.api_model)
+            has_herbie = bool(config.herbie_model)
+            assert has_api or has_herbie, (
+                f"{model_id} has neither api_model nor herbie_model"
+            )
 
 
 class TestModelAliases:
